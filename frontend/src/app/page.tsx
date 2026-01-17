@@ -26,8 +26,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
+import MagneticButton from '@/components/ui/magnetic-button';
 
 gsap.registerPlugin(ScrollTrigger);
+
+// Scroll state hook
+function useScrollState(threshold: number = 50) {
+  const [isScrolled, setIsScrolled] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > threshold);
+    };
+    window.addEventListener('scroll', handleScroll);
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [threshold]);
+  return isScrolled;
+}
 
 // Counter animation hook
 function useCounter(target: number, duration: number = 2000, startOnView: boolean = true) {
@@ -136,35 +151,41 @@ function StatCard({ value, suffix, label, index }: { value: number; suffix: stri
 }
 
 // Floating Elements
-function FloatingElements() {
+// Parallax Background
+function ParallaxBackground() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"],
+  });
+
+  const y = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
+  const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0.3]);
+
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <motion.div
-        className="absolute top-20 left-10 w-20 h-20 rounded-full bg-forest/5"
-        animate={{ y: [0, -30, 0], rotate: [0, 180, 360] }}
-        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-      />
-      <motion.div
-        className="absolute top-40 right-20 w-16 h-16 rounded-full bg-alive/10"
-        animate={{ y: [0, 20, 0], x: [0, 10, 0] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute bottom-40 left-1/4 w-24 h-24 rounded-full bg-earth/5"
-        animate={{ y: [0, -20, 0] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-      />
-      <motion.div
-        className="absolute top-1/2 right-10 w-12 h-12 rounded-full bg-forest-light/10"
-        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-      />
+    <div ref={ref} className="absolute inset-0 z-0 overflow-hidden h-[120vh]">
+      <motion.div style={{ y, opacity }} className="absolute inset-0">
+        {/* Video Background */}
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="w-full h-full object-cover"
+          src="/videos/treeAnime.mp4"
+        />
+        {/* Overlays - Reduced opacity for better visibility */}
+        <div className="absolute inset-0 bg-background/10 backdrop-blur-[0.5px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-transparent to-background" />
+        <div className="absolute inset-0 grid-pattern opacity-10" />
+      </motion.div>
     </div>
   );
 }
 
 // Main Page Component
 export default function LandingPage() {
+  const isScrolled = useScrollState();
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
@@ -217,6 +238,21 @@ export default function LandingPage() {
         }
       );
     });
+
+    // Process line draw animation
+    gsap.fromTo(
+      '.process-line',
+      { scaleX: 0, transformOrigin: "left" },
+      {
+        scaleX: 1,
+        scrollTrigger: {
+          trigger: "#how-it-works",
+          start: "top center",
+          end: "center center",
+          scrub: 1,
+        }
+      }
+    );
   }, []);
 
   // Anime.js particle effect
@@ -300,57 +336,56 @@ export default function LandingPage() {
       <div className="particle-container fixed inset-0 pointer-events-none overflow-hidden z-0" />
 
       {/* Navigation */}
-      <motion.nav
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="fixed top-0 left-0 right-0 z-50 glass"
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'glass py-3' : 'bg-transparent py-5'}`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-xl gradient-forest flex items-center justify-center">
                 <Leaf className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl font-bold text-gradient">VerdeScan</span>
+              <span className={`text-xl font-bold transition-colors ${isScrolled ? 'text-gradient' : 'text-white'}`}>VerdeScan</span>
             </div>
 
             <div className="hidden md:flex items-center gap-8">
-              <Link href="#features" className="text-muted-foreground hover:text-forest transition-colors line-decoration">
-                Features
-              </Link>
-              <Link href="#how-it-works" className="text-muted-foreground hover:text-forest transition-colors line-decoration">
-                How it Works
-              </Link>
-              <Link href="#impact" className="text-muted-foreground hover:text-forest transition-colors line-decoration">
-                Impact
-              </Link>
+              {['Features', 'How it Works', 'Impact'].map((item) => (
+                <Link
+                  key={item}
+                  href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
+                  className={`transition-colors line-decoration ${isScrolled ? 'text-muted-foreground hover:text-forest' : 'text-white/80 hover:text-white'}`}
+                >
+                  {item}
+                </Link>
+              ))}
             </div>
 
             <div className="flex items-center gap-3">
               <Link href="/dashboard">
-                <Button variant="ghost" className="hidden sm:flex">
+                <Button variant="ghost" className={`hidden sm:flex ${isScrolled ? '' : 'text-white hover:bg-white/10 hover:text-white'}`}>
                   Dashboard
                 </Button>
               </Link>
               <Link href="/dashboard">
-                <Button className="btn-premium gradient-forest text-white border-0">
-                  Get Started
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                <MagneticButton>
+                  <Button className="btn-premium gradient-forest text-white border-0">
+                    Get Started
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </MagneticButton>
               </Link>
             </div>
           </div>
         </div>
-      </motion.nav>
+      </nav>
 
       {/* Hero Section */}
       <motion.section
         ref={heroRef}
         style={{ opacity: heroOpacity, scale: heroScale }}
-        className="relative min-h-screen flex items-center justify-center pt-16"
+        className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden"
       >
-        <FloatingElements />
+        <ParallaxBackground />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 relative z-10">
           <div className="text-center">
@@ -449,44 +484,42 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* Hero visual - Drone/Map mockup */}
-        <motion.div
-          initial={{ opacity: 0, y: 100 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-5xl px-4"
-        >
-          <div className="relative">
-            <div className="glass-card rounded-t-2xl p-4 shadow-2xl">
-              <div className="aspect-[16/9] bg-gradient-to-br from-forest/5 to-forest/10 rounded-xl flex items-center justify-center relative overflow-hidden">
-                {/* Simulated map interface */}
-                <div className="relative z-10 flex flex-col items-center gap-4">
-                  <div className="w-20 h-20 rounded-full gradient-forest flex items-center justify-center animate-pulse-slow">
-                    <TreePine className="w-10 h-10 text-white" />
-                  </div>
-                  <p className="text-muted-foreground">Interactive Dashboard Preview</p>
-                </div>
+        {/* Drone HUD Overlay */}
+        <div className="absolute inset-0 pointer-events-none z-0">
+          {/* Central reticle */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 1, duration: 1 }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-white/10 rounded-full opacity-20"
+          />
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[580px] h-[580px] border-t border-b border-white/20 rounded-full opacity-30"
+          />
 
-                {/* Floating markers */}
-                <motion.div
-                  animate={{ y: [0, -5, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="absolute top-1/4 left-1/4 w-4 h-4 rounded-full bg-alive shadow-lg shadow-alive/50"
-                />
-                <motion.div
-                  animate={{ y: [0, 5, 0] }}
-                  transition={{ duration: 2.5, repeat: Infinity }}
-                  className="absolute top-1/3 right-1/3 w-4 h-4 rounded-full bg-dead shadow-lg shadow-dead/50"
-                />
-                <motion.div
-                  animate={{ y: [0, -5, 0] }}
-                  transition={{ duration: 1.8, repeat: Infinity }}
-                  className="absolute bottom-1/3 right-1/4 w-4 h-4 rounded-full bg-alive shadow-lg shadow-alive/50"
-                />
-              </div>
-            </div>
+          {/* Corner brackets */}
+          <div className="absolute top-10 left-10 w-16 h-16 border-t-2 border-l-2 border-white/20" />
+          <div className="absolute top-10 right-10 w-16 h-16 border-t-2 border-r-2 border-white/20" />
+          <div className="absolute bottom-10 left-10 w-16 h-16 border-b-2 border-l-2 border-white/20" />
+          <div className="absolute bottom-10 right-10 w-16 h-16 border-b-2 border-r-2 border-white/20" />
+
+          {/* Data readouts */}
+          <div className="absolute top-12 left-28 font-mono text-xs text-white/60">
+            <div>ALT: 120m</div>
+            <div>SPD: 12m/s</div>
+            <div>BAT: 84%</div>
           </div>
-        </motion.div>
+          <div className="absolute bottom-12 right-28 font-mono text-xs text-white/60 text-right">
+            <div className="flex items-center gap-2 justify-end">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              RECORDING
+            </div>
+            <div>ISO: 400</div>
+            <div>SHUTTER: 1/200</div>
+          </div>
+        </div>
       </motion.section>
 
       {/* Stats Section */}
@@ -558,7 +591,7 @@ export default function LandingPage() {
 
           <div className="relative">
             {/* Connection line */}
-            <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-forest/30 to-transparent -translate-y-1/2" />
+            <div className="process-line hidden lg:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-forest/30 to-transparent -translate-y-1/2" />
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               {[
@@ -593,6 +626,12 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      import ScrollVideo from '@/components/ScrollVideo';
+
+      // ... (existing imports)
+
+      // ...
 
       {/* Impact Section */}
       <section id="impact" className="py-20 relative z-10">
@@ -643,39 +682,14 @@ export default function LandingPage() {
                 </div>
               </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="relative"
-              >
-                <div className="aspect-square bg-gradient-to-br from-forest/10 to-forest/5 rounded-2xl flex items-center justify-center relative overflow-hidden">
-
-                  {/* Animated rings */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <motion.div
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                      transition={{ duration: 3, repeat: Infinity }}
-                      className="absolute w-32 h-32 rounded-full border-2 border-forest/30"
-                    />
-                    <motion.div
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                      transition={{ duration: 3, repeat: Infinity, delay: 1 }}
-                      className="absolute w-32 h-32 rounded-full border-2 border-forest/30"
-                    />
-                    <motion.div
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                      transition={{ duration: 3, repeat: Infinity, delay: 2 }}
-                      className="absolute w-32 h-32 rounded-full border-2 border-forest/30"
-                    />
-                  </div>
-
-                  <div className="w-24 h-24 rounded-full gradient-forest flex items-center justify-center z-10 animate-glow">
-                    <TrendingUp className="w-12 h-12 text-white" />
-                  </div>
-                </div>
-              </motion.div>
+              <div className="relative h-[400px] rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                <img
+                  src="/images/hero-bg.png"
+                  alt="Drone Analysis"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-forest/10" />
+              </div>
             </div>
           </div>
         </div>
