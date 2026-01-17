@@ -21,6 +21,14 @@ class DataManager:
         self.ensure_data_directory()
         self._cache = None
         self._cache_mtime = 0
+
+    @staticmethod
+    def _sanitize_filename(filename: str) -> str:
+        """Sanitize filename to prevent path traversal."""
+        # Remove directory separators and keep only safe characters
+        safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        sanitized = "".join(c for c in filename if c in safe_chars)
+        return sanitized if sanitized else "unnamed_patch"
     
     def ensure_data_directory(self):
         """Ensure all required data directories exist."""
@@ -294,7 +302,8 @@ class DataManager:
             
             # Create DataFrame and save
             df = pd.DataFrame(csv_data)
-            csv_path = os.path.join(settings.data_dir, "exports", f"results_{result.patch_id}.csv")
+            safe_patch_id = self._sanitize_filename(result.patch_id)
+            csv_path = os.path.join(settings.data_dir, "exports", f"results_{safe_patch_id}.csv")
             df.to_csv(csv_path, index=False)
             
             logger.info(f"Saved CSV export for patch {result.patch_id}")
@@ -312,7 +321,8 @@ class DataManager:
         Returns:
             Path to CSV file or None if not found
         """
-        csv_path = os.path.join(settings.data_dir, "exports", f"results_{patch_id}.csv")
+        safe_patch_id = self._sanitize_filename(patch_id)
+        csv_path = os.path.join(settings.data_dir, "exports", f"results_{safe_patch_id}.csv")
         return csv_path if os.path.exists(csv_path) else None
     
     async def cleanup_old_data(self, max_age_days: int = 30):
