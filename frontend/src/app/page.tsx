@@ -174,10 +174,6 @@ function ParallaxBackground() {
           className="w-full h-full object-cover"
           src="/videos/treeAnime.mp4"
         />
-        {/* Overlays - Reduced opacity for better visibility */}
-        <div className="absolute inset-0 bg-background/10 backdrop-blur-[0.5px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-transparent to-background" />
-        <div className="absolute inset-0 grid-pattern opacity-10" />
       </motion.div>
     </div>
   );
@@ -329,9 +325,6 @@ export default function LandingPage() {
 
 
 
-      {/* Gradient glow */}
-      <div className="fixed top-0 left-0 right-0 h-[600px] gradient-radial-glow pointer-events-none" />
-
       {/* Particle container */}
       <div className="particle-container fixed inset-0 pointer-events-none overflow-hidden z-0" />
 
@@ -403,13 +396,13 @@ export default function LandingPage() {
             </motion.div>
 
             {/* Main Title */}
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 perspective-1000">
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 perspective-1000 text-white">
               <span className="hero-title-word inline-block">Track</span>{' '}
-              <span className="hero-title-word inline-block text-gradient">Every</span>{' '}
+              <span className="hero-title-word inline-block text-gradient-orange">Every</span>{' '}
               <span className="hero-title-word inline-block">Sapling,</span>
               <br />
               <span className="hero-title-word inline-block">Protect</span>{' '}
-              <span className="hero-title-word inline-block text-gradient">Every</span>{' '}
+              <span className="hero-title-word inline-block text-gradient-orange">Every</span>{' '}
               <span className="hero-title-word inline-block">Forest</span>
             </h1>
 
@@ -418,10 +411,10 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.8 }}
-              className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10"
+              className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto mb-10"
             >
               AI-powered drone imagery analysis for monitoring{' '}
-              <span className="text-forest font-medium">5 Crore+ saplings</span> annually.
+              <span className="text-yellow-400 font-medium">5 Crore+ saplings</span> annually.
               Replace manual surveys with precision technology.
             </motion.p>
 
@@ -449,7 +442,7 @@ export default function LandingPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 1.2 }}
-              className="mt-12 flex flex-wrap justify-center gap-6 text-muted-foreground text-sm"
+              className="mt-12 flex flex-wrap justify-center gap-6 text-white/80 text-sm"
             >
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-alive" />
