@@ -10,7 +10,7 @@
 **Solution:** VerdeScan automates this process using **Drone Imagery** and **Computer Vision**. It tracks forest patches over 3 years, identifying individual saplings, calculating survival rates, and locating casualties with GPS precision.
 
 **Key Capabilities:**
-*   **Precision AI:** Custom CNN Model trained on 2124+ high-res patch tiles.
+*   **Precision AI:** Custom CNN Model trained on 4000+ high-res patch tiles.
 *   **Lifecycle Tracking:** Monitors distinct phases (Pitting → Planting → Weeding).
 *   **Proof of Survival:** Mathematically proven to locate missing saplings with **100% accuracy** (verified on 10,000-point simulation).
 
@@ -174,7 +174,7 @@ VerdeScan/
 └── README.md                    # This file
 ```
 
----
-
 ## 👥 Team VerdeScan
 *Building a greener future, one pixel at a time.*
+
+---

@@ -3,6 +3,7 @@ Data management for storing and retrieving processing results.
 """
 import json
 import os
+import asyncio
 import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -21,6 +22,7 @@ class DataManager:
         self.ensure_data_directory()
         self._cache = None
         self._cache_mtime = 0
+        self._lock = asyncio.Lock()
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
@@ -53,24 +55,25 @@ class DataManager:
             True if saved successfully, False otherwise
         """
         try:
-            # Load existing results
-            existing_data = await self._load_results_data()
+            async with self._lock:
+                # Load existing results
+                existing_data = await self._load_results_data()
+                
+                # Convert result to serializable format
+                result_data = self._serialize_processing_result(result)
+                
+                # Update results
+                existing_data[result.patch_id] = result_data
+                
+                # Save updated results
+                async with aiofiles.open(self.results_file, 'w') as f:
+                    await f.write(json.dumps(existing_data, indent=2, default=str))
+                
+                # Invalidate cache after writing
+                self._cache = None
+                self._cache_mtime = 0
             
-            # Convert result to serializable format
-            result_data = self._serialize_processing_result(result)
-            
-            # Update results
-            existing_data[result.patch_id] = result_data
-            
-            # Save updated results
-            async with aiofiles.open(self.results_file, 'w') as f:
-                await f.write(json.dumps(existing_data, indent=2, default=str))
-            
-            # Invalidate cache after writing
-            self._cache = None
-            self._cache_mtime = 0
-            
-            # Save CSV export
+            # Save CSV export (can be outside lock as it's per-file)
             await self._save_csv_export(result)
             
             logger.info(f"Saved processing result for patch {result.patch_id}")
