@@ -168,9 +168,14 @@ curl http://localhost:8000/health
 - File and console output
 - Error tracking and debugging
 
-## 🚀 Production Deployment
+### Prodcution Setup
+1. **Cloud Deployment**
+   - **AWS EC2**: Launch Ubuntu 20.04 (t3.medium+), open ports 8000/80/443.
+   - **GCP**: Create Compute Engine (n1-standard-2), allow HTTP/HTTPS.
+   - **DigitalOcean**: Create Ubuntu 20.04 Droplet.
+   *After launching, SSH in and follow the [Docker Production Setup](#docker-production-setup).*
 
-### Docker Production Setup
+2. **Docker Production Setup**
 ```bash
 # Build and start production services
 docker-compose --profile production up -d
