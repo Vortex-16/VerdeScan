@@ -37,21 +37,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
+import { api, GlobalStats } from '@/lib/api';
 
-// Mock data
-const mockStats = {
-    totalPatches: 247,
-    totalPlanted: 12400000,
-    totalAlive: 10788000,
-    totalDead: 1612000,
-    survivalRate: 87.1,
-    yearProgress: {
-        year1: 100,
-        year2: 75,
-        year3: 25
-    }
-};
-
+// Mock alert patches (keep these for UI demo until backend has per-patch alerts)
 const alertPatches = [
     { id: 'MN-018', location: 'Zone 3, Sector B', survival: 62.5, status: 'critical', lastSurvey: '2 days ago' },
     { id: 'JK-042', location: 'Zone 5, Sector A', survival: 68.2, status: 'critical', lastSurvey: '5 days ago' },
@@ -69,9 +57,13 @@ function useCounter(target: number, duration: number = 2000) {
     useEffect(() => {
         if (hasAnimated.current) return;
 
+        // Reset count if target changes
+        setCount(0);
+        hasAnimated.current = false;
+
         const observer = new IntersectionObserver(
             (entries) => {
-                if (entries[0].isIntersecting && !hasAnimated.current) {
+                if (entries[0].isIntersecting) {
                     hasAnimated.current = true;
                     const startTime = Date.now();
                     const animate = () => {
@@ -81,6 +73,8 @@ function useCounter(target: number, duration: number = 2000) {
                         setCount(Math.floor(eased * target));
                         if (progress < 1) {
                             requestAnimationFrame(animate);
+                        } else {
+                            setCount(target); // Ensure final value is exact
                         }
                     };
                     animate();
@@ -476,6 +470,36 @@ function SidebarContent({ links }: { links: any[] }) {
 export default function DashboardPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [selectedYear, setSelectedYear] = useState('2024');
+    const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState<GlobalStats>({
+        total_patches: 0,
+        total_trees: 0,
+        total_alive: 0,
+        total_dead: 0,
+        total_diseased: 0,
+        avg_survival_rate: 0,
+        last_updated: ''
+    });
+
+    useEffect(() => {
+        async function fetchStats() {
+            setLoading(true);
+            const data = await api.getGlobalStats();
+            setStats(data);
+            setLoading(false);
+        }
+        fetchStats();
+
+        // Refresh every 30 seconds
+        const interval = setInterval(fetchStats, 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const yearProgress = {
+        year1: 100,
+        year2: 75,
+        year3: 25
+    };
 
     return (
         <div className="min-h-screen bg-background">
@@ -550,32 +574,30 @@ export default function DashboardPage() {
                         <KPICard
                             icon={MapPin}
                             title="Patches Monitored"
-                            value={mockStats.totalPatches}
+                            value={stats.total_patches}
                             trend="up"
-                            trendValue="+12%"
+                            trendValue="+4"
                             color="forest"
                             index={0}
                         />
                         <KPICard
                             icon={TreePine}
                             title="Saplings Planted"
-                            value={mockStats.totalPlanted}
+                            value={stats.total_trees}
                             color="earth"
                             index={1}
                         />
                         <KPICard
                             icon={CheckCircle2}
                             title="Saplings Alive"
-                            value={mockStats.totalAlive}
-                            trend="up"
-                            trendValue="+5.2%"
+                            value={stats.total_alive}
                             color="alive"
                             index={2}
                         />
                         <KPICard
                             icon={XCircle}
                             title="Saplings Dead"
-                            value={mockStats.totalDead}
+                            value={stats.total_dead}
                             color="dead"
                             index={3}
                         />
@@ -583,8 +605,8 @@ export default function DashboardPage() {
 
                     {/* Survival Rate and Year Progress */}
                     <div className="grid lg:grid-cols-2 gap-4 mb-8">
-                        <SurvivalGauge value={mockStats.survivalRate} />
-                        <YearProgress yearProgress={mockStats.yearProgress} />
+                        <SurvivalGauge value={stats.avg_survival_rate} />
+                        <YearProgress yearProgress={yearProgress} />
                     </div>
 
                     {/* Alert Patches Table */}
