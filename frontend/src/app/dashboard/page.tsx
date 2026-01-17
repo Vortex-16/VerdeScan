@@ -144,28 +144,27 @@ function KPICard({
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.5, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: index * 0.08 }}
         >
-            <Card className="glass-card group hover:border-forest/30 transition-all duration-500 overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-transparent to-forest/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <CardContent className="p-6 relative">
+            <Card className="glass-card">
+                <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
-                        <div className={`w-12 h-12 rounded-xl ${colors.bg} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                            <Icon className={`w-6 h-6 ${colors.icon}`} />
+                        <div className={`w-11 h-11 rounded-lg ${colors.bg} flex items-center justify-center`}>
+                            <Icon className={`w-5 h-5 ${colors.icon}`} />
                         </div>
                         {trend && (
                             <div className={`flex items-center gap-1 text-xs font-medium ${trend === 'up' ? 'text-alive' : 'text-dead'}`}>
-                                {trend === 'up' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                {trend === 'up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                                 {trendValue}
                             </div>
                         )}
                     </div>
                     <div className="space-y-1">
-                        <p className="text-3xl font-bold">
-                            <span ref={ref} className="counter-animate">{formatNumber(count)}</span>
-                            <span className="text-xl text-muted-foreground ml-1">{suffix}</span>
+                        <p className="text-2xl font-semibold">
+                            <span ref={ref}>{formatNumber(count)}</span>
+                            <span className="text-lg text-muted-foreground ml-1">{suffix}</span>
                         </p>
                         <p className="text-sm text-muted-foreground">{title}</p>
                     </div>
@@ -199,35 +198,34 @@ function SurvivalGauge({ value }: { value: number }) {
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
+            transition={{ duration: 0.4, delay: 0.24 }}
         >
             <Card className="glass-card">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg font-medium">Overall Survival Rate</CardTitle>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium">Overall Survival Rate</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="flex items-end justify-between mb-4">
-                        <span className="text-5xl font-bold text-gradient">{animatedValue.toFixed(1)}%</span>
+                        <span className="text-4xl font-semibold">{animatedValue.toFixed(1)}%</span>
                         <Badge variant="secondary" className={`${config.color}/10 ${config.textColor} border-0`}>
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             {config.label}
                         </Badge>
                     </div>
 
-                    <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                    <div className="relative h-2 bg-muted rounded-full overflow-hidden">
                         <motion.div
                             className={`absolute inset-y-0 left-0 ${config.color} rounded-full`}
                             initial={{ width: 0 }}
                             animate={{ width: `${animatedValue}%` }}
-                            transition={{ duration: 1.5, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                            transition={{ duration: 1.2, delay: 0.4, ease: "easeOut" }}
                         />
-                        {/* Threshold line at 85% */}
-                        <div className="absolute inset-y-0 left-[85%] w-0.5 bg-forest/50" />
+                        <div className="absolute inset-y-0 left-[85%] w-0.5 bg-forest/40" />
                     </div>
 
                     <div className="flex justify-between mt-2 text-xs text-muted-foreground">
                         <span>0%</span>
-                        <span className="text-forest">Target: 85%</span>
+                        <span className="text-forest font-medium">Target: 85%</span>
                         <span>100%</span>
                     </div>
                 </CardContent>
@@ -242,11 +240,11 @@ function YearProgress({ yearProgress }: { yearProgress: { year1: number; year2: 
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
+            transition={{ duration: 0.4, delay: 0.32 }}
         >
             <Card className="glass-card h-full">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg font-medium">Monitoring Status</CardTitle>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium">Monitoring Status</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {[
@@ -256,21 +254,21 @@ function YearProgress({ yearProgress }: { yearProgress: { year1: number; year2: 
                     ].map((year, index) => (
                         <motion.div
                             key={year.label}
-                            initial={{ opacity: 0, x: -20 }}
+                            initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
-                            transition={{ duration: 0.4, delay: 0.5 + index * 0.1 }}
+                            transition={{ duration: 0.3, delay: 0.4 + index * 0.08 }}
                             className="space-y-2"
                         >
                             <div className="flex items-center justify-between text-sm">
                                 <span className="font-medium">{year.label}</span>
-                                <span className="text-muted-foreground">{year.value}% - {year.status}</span>
+                                <span className="text-muted-foreground">{year.value}% • {year.status}</span>
                             </div>
-                            <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+                            <div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
                                 <motion.div
                                     className={`absolute inset-y-0 left-0 rounded-full ${year.value === 100 ? 'bg-alive' : 'bg-forest'}`}
                                     initial={{ width: 0 }}
                                     animate={{ width: `${year.value}%` }}
-                                    transition={{ duration: 1, delay: 0.6 + index * 0.15, ease: [0.16, 1, 0.3, 1] }}
+                                    transition={{ duration: 0.8, delay: 0.5 + index * 0.1, ease: "easeOut" }}
                                 />
                             </div>
                         </motion.div>
@@ -287,16 +285,16 @@ function AlertPatchesTable({ patches }: { patches: typeof alertPatches }) {
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
+            transition={{ duration: 0.4, delay: 0.4 }}
         >
             <Card className="glass-card">
                 <CardHeader className="pb-4">
                     <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg font-medium flex items-center gap-2">
-                            <AlertTriangle className="w-5 h-5 text-uncertain" />
+                        <CardTitle className="text-base font-medium flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-uncertain" />
                             Patches Requiring Attention
                         </CardTitle>
-                        <Button variant="ghost" size="sm" className="text-forest hover:text-forest-light">
+                        <Button variant="ghost" size="sm" className="text-forest hover:text-forest-light text-sm">
                             View All
                             <ChevronRight className="w-4 h-4 ml-1" />
                         </Button>
@@ -319,10 +317,10 @@ function AlertPatchesTable({ patches }: { patches: typeof alertPatches }) {
                                 {patches.map((patch, index) => (
                                     <motion.tr
                                         key={patch.id}
-                                        initial={{ opacity: 0, x: -20 }}
+                                        initial={{ opacity: 0, x: -10 }}
                                         animate={{ opacity: 1, x: 0 }}
-                                        transition={{ duration: 0.3, delay: 0.6 + index * 0.05 }}
-                                        className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${patch.status === 'critical' ? 'bg-dead/5' : ''}`}
+                                        transition={{ duration: 0.25, delay: 0.5 + index * 0.04 }}
+                                        className={`border-b border-border/50 hover:bg-muted/20 transition-colors ${patch.status === 'critical' ? 'bg-dead/3' : ''}`}
                                     >
                                         <td className="py-3 px-2">
                                             <div className="flex items-center gap-2">
@@ -536,13 +534,13 @@ export default function DashboardPage() {
                 <main className="p-4 lg:p-8">
                     {/* Page header */}
                     <motion.div
-                        initial={{ opacity: 0, y: -20 }}
+                        initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="mb-8"
+                        transition={{ duration: 0.3 }}
+                        className="mb-6"
                     >
-                        <h1 className="text-3xl font-bold mb-2">Dashboard Overview</h1>
-                        <p className="text-muted-foreground">
+                        <h1 className="text-2xl font-semibold mb-1">Dashboard Overview</h1>
+                        <p className="text-sm text-muted-foreground">
                             Monitor afforestation health across all patches in real-time
                         </p>
                     </motion.div>
