@@ -354,8 +354,8 @@ function AlertPatchesTable({ patches }: { patches: typeof alertPatches }) {
                                             <Badge
                                                 variant="secondary"
                                                 className={`text-xs ${patch.status === 'critical' ? 'bg-dead/10 text-dead' :
-                                                        patch.status === 'warning' ? 'bg-uncertain/10 text-uncertain' :
-                                                            'bg-alive/10 text-alive'
+                                                    patch.status === 'warning' ? 'bg-uncertain/10 text-uncertain' :
+                                                        'bg-alive/10 text-alive'
                                                     }`}
                                             >
                                                 {patch.status === 'critical' ? 'Critical' : patch.status === 'warning' ? 'Warning' : 'Healthy'}
@@ -405,59 +405,72 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
                 )}
             </AnimatePresence>
 
-            {/* Sidebar */}
+            {/* Sidebar - Desktop (Static) */}
+            <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border z-30">
+                <SidebarContent links={links} />
+            </aside>
+
+            {/* Sidebar - Mobile (Animated) */}
             <motion.aside
                 initial={{ x: -300 }}
                 animate={{ x: isOpen ? 0 : -300 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border z-50 lg:translate-x-0 lg:z-30"
+                className="fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border z-50 lg:hidden"
             >
-                <div className="flex flex-col h-full">
-                    {/* Logo */}
-                    <div className="h-16 flex items-center justify-between px-4 border-b border-border">
-                        <Link href="/" className="flex items-center gap-2">
-                            <div className="w-10 h-10 rounded-xl gradient-forest flex items-center justify-center">
-                                <Leaf className="w-6 h-6 text-white" />
-                            </div>
-                            <span className="text-xl font-bold text-gradient">VerdeScan</span>
-                        </Link>
-                        <Button variant="ghost" size="icon" className="lg:hidden" onClick={onClose}>
-                            <X className="w-5 h-5" />
-                        </Button>
-                    </div>
-
-                    {/* Navigation */}
-                    <nav className="flex-1 p-4 space-y-1">
-                        {links.map((link) => (
-                            <Link
-                                key={link.label}
-                                href={link.href}
-                                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${link.active
-                                        ? 'bg-forest text-white'
-                                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                                    }`}
-                            >
-                                <link.icon className={`w-5 h-5 ${link.active ? '' : 'group-hover:scale-110'} transition-transform`} />
-                                <span className="font-medium">{link.label}</span>
-                            </Link>
-                        ))}
-                    </nav>
-
-                    {/* User section */}
-                    <div className="p-4 border-t border-border">
-                        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted">
-                            <div className="w-10 h-10 rounded-full bg-forest/20 flex items-center justify-center">
-                                <span className="text-forest font-semibold">FO</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">Forest Officer</p>
-                                <p className="text-xs text-muted-foreground truncate">Khordha Division</p>
-                            </div>
-                        </div>
-                    </div>
+                <div className="flex flex-col h-full relative">
+                    <Button variant="ghost" size="icon" className="absolute top-4 right-4 lg:hidden" onClick={onClose}>
+                        <X className="w-5 h-5" />
+                    </Button>
+                    <SidebarContent links={links} />
                 </div>
             </motion.aside>
         </>
+    );
+}
+
+function SidebarContent({ links }: { links: any[] }) {
+    return (
+        <div className="flex flex-col h-full">
+            {/* Logo */}
+            <div className="h-16 flex items-center px-6 border-b border-border">
+                <Link href="/" className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg gradient-forest flex items-center justify-center">
+                        <Leaf className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-lg font-bold text-gradient">VerdeScan</span>
+                </Link>
+            </div>
+
+            {/* Navigation */}
+            <nav className="flex-1 p-4 space-y-1">
+                {links.map((link) => (
+                    <Link
+                        key={link.label}
+                        href={link.href}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${link.active
+                            ? 'bg-forest text-white shadow-lg shadow-forest/25'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            }`}
+                    >
+                        <link.icon className={`w-5 h-5 ${link.active ? '' : 'group-hover:scale-110'} transition-transform`} />
+                        <span className="font-medium">{link.label}</span>
+                    </Link>
+                ))}
+            </nav>
+
+            {/* User section */}
+            <div className="p-4 border-t border-border">
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/50 border border-border/50">
+                    <div className="w-10 h-10 rounded-full bg-forest/10 flex items-center justify-center">
+                        <span className="text-forest font-semibold text-sm">FO</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">Forest Officer</p>
+                        <p className="text-xs text-muted-foreground truncate">Khordha Division</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
