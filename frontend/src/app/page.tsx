@@ -5,10 +5,10 @@ import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import anime from 'animejs';
-import { 
-  TreePine, 
-  Satellite, 
-  BarChart3, 
+import {
+  TreePine,
+  Satellite,
+  BarChart3,
   MapPin,
   Leaf,
   Zap,
@@ -83,15 +83,15 @@ function AnimatedText({ text, className, delay = 0 }: { text: string; className?
 }
 
 // Feature Card Component
-function FeatureCard({ 
-  icon: Icon, 
-  title, 
-  description, 
-  index 
-}: { 
-  icon: React.ElementType; 
-  title: string; 
-  description: string; 
+function FeatureCard({
+  icon: Icon,
+  title,
+  description,
+  index
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
   index: number;
 }) {
   return (
@@ -117,7 +117,7 @@ function FeatureCard({
 // Stat Card Component
 function StatCard({ value, suffix, label, index }: { value: number; suffix: string; label: string; index: number }) {
   const { count, ref } = useCounter(value, 2000);
-  
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -226,7 +226,7 @@ export default function LandingPage() {
       particle.className = 'absolute w-1 h-1 bg-forest/30 rounded-full';
       const container = document.querySelector('.particle-container');
       if (!container) return;
-      
+
       particle.style.left = `${Math.random() * 100}%`;
       particle.style.top = '100%';
       container.appendChild(particle);
@@ -290,16 +290,12 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Cursor glow */}
       <div ref={cursorRef} className="cursor-glow hidden md:block" />
-      
-      {/* Noise overlay */}
-      <div className="noise-overlay" />
-      
-      {/* Grid pattern background */}
-      <div className="fixed inset-0 grid-pattern pointer-events-none" />
-      
+
+
+
       {/* Gradient glow */}
       <div className="fixed top-0 left-0 right-0 h-[600px] gradient-radial-glow pointer-events-none" />
-      
+
       {/* Particle container */}
       <div className="particle-container fixed inset-0 pointer-events-none overflow-hidden z-0" />
 
@@ -318,7 +314,7 @@ export default function LandingPage() {
               </div>
               <span className="text-xl font-bold text-gradient">VerdeScan</span>
             </div>
-            
+
             <div className="hidden md:flex items-center gap-8">
               <Link href="#features" className="text-muted-foreground hover:text-forest transition-colors line-decoration">
                 Features
@@ -330,7 +326,7 @@ export default function LandingPage() {
                 Impact
               </Link>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Link href="/dashboard">
                 <Button variant="ghost" className="hidden sm:flex">
@@ -355,7 +351,7 @@ export default function LandingPage() {
         className="relative min-h-screen flex items-center justify-center pt-16"
       >
         <FloatingElements />
-        
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 relative z-10">
           <div className="text-center">
             {/* Badge */}
@@ -464,14 +460,13 @@ export default function LandingPage() {
             <div className="glass-card rounded-t-2xl p-4 shadow-2xl">
               <div className="aspect-[16/9] bg-gradient-to-br from-forest/5 to-forest/10 rounded-xl flex items-center justify-center relative overflow-hidden">
                 {/* Simulated map interface */}
-                <div className="absolute inset-0 grid-pattern opacity-50" />
                 <div className="relative z-10 flex flex-col items-center gap-4">
                   <div className="w-20 h-20 rounded-full gradient-forest flex items-center justify-center animate-pulse-slow">
                     <TreePine className="w-10 h-10 text-white" />
                   </div>
                   <p className="text-muted-foreground">Interactive Dashboard Preview</p>
                 </div>
-                
+
                 {/* Floating markers */}
                 <motion.div
                   animate={{ y: [0, -5, 0] }}
@@ -564,7 +559,7 @@ export default function LandingPage() {
           <div className="relative">
             {/* Connection line */}
             <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-forest/30 to-transparent -translate-y-1/2" />
-            
+
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               {[
                 { step: '01', title: 'Drone Survey', description: 'Field teams capture high-resolution orthomosaic imagery using professional drones.', icon: Satellite },
@@ -604,7 +599,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="glass-card rounded-2xl p-8 md:p-12 relative overflow-hidden">
             <div className="absolute inset-0 gradient-radial-glow opacity-50" />
-            
+
             <div className="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
               <motion.div
                 initial={{ opacity: 0, x: -30 }}
@@ -623,7 +618,7 @@ export default function LandingPage() {
                   Traditional manual surveys cover only 5% of forest patches. VerdeScan enables 100% coverage,
                   ensuring every planted sapling is tracked and every forest officer has the data they need.
                 </p>
-                
+
                 <div className="space-y-4">
                   {[
                     'Reduce manual survey costs by 80%',
@@ -647,7 +642,7 @@ export default function LandingPage() {
                   ))}
                 </div>
               </motion.div>
-              
+
               <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 whileInView={{ opacity: 1, x: 0 }}
@@ -656,8 +651,7 @@ export default function LandingPage() {
                 className="relative"
               >
                 <div className="aspect-square bg-gradient-to-br from-forest/10 to-forest/5 rounded-2xl flex items-center justify-center relative overflow-hidden">
-                  <div className="absolute inset-0 grid-pattern opacity-30" />
-                  
+
                   {/* Animated rings */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <motion.div
@@ -676,7 +670,7 @@ export default function LandingPage() {
                       className="absolute w-32 h-32 rounded-full border-2 border-forest/30"
                     />
                   </div>
-                  
+
                   <div className="w-24 h-24 rounded-full gradient-forest flex items-center justify-center z-10 animate-glow">
                     <TrendingUp className="w-12 h-12 text-white" />
                   </div>
@@ -729,11 +723,11 @@ export default function LandingPage() {
               </div>
               <span className="font-semibold">VerdeScan</span>
             </div>
-            
+
             <p className="text-muted-foreground text-sm text-center">
               AI-powered afforestation monitoring for the Odisha Forest Department
             </p>
-            
+
             <p className="text-muted-foreground text-sm">
               © 2026 VerdeScan. All rights reserved.
             </p>
