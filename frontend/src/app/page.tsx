@@ -97,6 +97,49 @@ function AnimatedText({ text, className, delay = 0 }: { text: string; className?
   );
 }
 
+// Dynamic Drone Telemetry Component
+function DroneTelemetry() {
+  const [telemetry, setTelemetry] = useState({
+    altitude: 120,
+    speed: 12,
+    battery: 84,
+    iso: 400,
+    shutter: 200,
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTelemetry({
+        altitude: 115 + Math.random() * 10, // 115-125m
+        speed: 10 + Math.random() * 4, // 10-14 m/s
+        battery: 82 + Math.random() * 4, // 82-86%
+        iso: 200 + Math.floor(Math.random() * 600), // 200-800
+        shutter: 125 + Math.floor(Math.random() * 275), // 1/125 - 1/400
+      });
+    }, 800 + Math.random() * 400); // Random interval between 800-1200ms
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <>
+      <div className="absolute top-12 left-28 font-mono text-xs text-white/60 transition-all duration-300">
+        <div>ALT: {telemetry.altitude.toFixed(0)}m</div>
+        <div>SPD: {telemetry.speed.toFixed(1)}m/s</div>
+        <div>BAT: {telemetry.battery.toFixed(0)}%</div>
+      </div>
+      <div className="absolute bottom-12 right-28 font-mono text-xs text-white/60 text-right transition-all duration-300">
+        <div className="flex items-center gap-2 justify-end">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          RECORDING
+        </div>
+        <div>ISO: {telemetry.iso}</div>
+        <div>SHUTTER: 1/{telemetry.shutter}</div>
+      </div>
+    </>
+  );
+}
+
 // Feature Card Component
 function FeatureCard({
   icon: Icon,
@@ -389,14 +432,14 @@ export default function LandingPage() {
               transition={{ duration: 0.5 }}
               className="mb-6"
             >
-              <Badge variant="secondary" className="px-4 py-1.5 text-sm font-medium bg-forest/10 text-forest border-forest/20 hover:bg-forest/20">
+              <Badge variant="secondary" className="px-4 py-1.5 text-sm font-bold backdrop-blur-md bg-white/20 text-white border border-white/30 hover:bg-white/30">
                 <Sparkles className="w-3.5 h-3.5 mr-1.5" />
                 AI-Powered Afforestation Monitoring
               </Badge>
             </motion.div>
 
             {/* Main Title */}
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 perspective-1000 text-white">
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 perspective-1000 text-white drop-shadow-2xl">
               <span className="hero-title-word inline-block">Track</span>{' '}
               <span className="hero-title-word inline-block text-gradient-orange">Every</span>{' '}
               <span className="hero-title-word inline-block">Sapling,</span>
@@ -411,10 +454,10 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.8 }}
-              className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto mb-10"
+              className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto mb-10 drop-shadow-lg"
             >
               AI-powered drone imagery analysis for monitoring{' '}
-              <span className="text-yellow-400 font-medium">5 Crore+ saplings</span> annually.
+              <span className="text-yellow-400 font-medium drop-shadow-lg">5 Crore+ saplings</span> annually.
               Replace manual surveys with precision technology.
             </motion.p>
 
@@ -442,19 +485,19 @@ export default function LandingPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 1.2 }}
-              className="mt-12 flex flex-wrap justify-center gap-6 text-white/80 text-sm"
+              className="mt-12 flex flex-wrap justify-center gap-6 text-sm"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md bg-white/20 border border-white/30">
                 <CheckCircle2 className="w-4 h-4 text-alive" />
-                <span>Odisha Forest Department</span>
+                <span className="text-emerald-900 font-medium">Odisha Forest Department</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md bg-white/20 border border-white/30">
                 <CheckCircle2 className="w-4 h-4 text-alive" />
-                <span>Government Approved</span>
+                <span className="text-emerald-900 font-medium">Government Approved</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md bg-white/20 border border-white/30">
                 <CheckCircle2 className="w-4 h-4 text-alive" />
-                <span>ISO Certified</span>
+                <span className="text-emerald-900 font-medium">ISO Certified</span>
               </div>
             </motion.div>
           </div>
@@ -498,20 +541,8 @@ export default function LandingPage() {
           <div className="absolute bottom-10 left-10 w-16 h-16 border-b-2 border-l-2 border-white/20" />
           <div className="absolute bottom-10 right-10 w-16 h-16 border-b-2 border-r-2 border-white/20" />
 
-          {/* Data readouts */}
-          <div className="absolute top-12 left-28 font-mono text-xs text-white/60">
-            <div>ALT: 120m</div>
-            <div>SPD: 12m/s</div>
-            <div>BAT: 84%</div>
-          </div>
-          <div className="absolute bottom-12 right-28 font-mono text-xs text-white/60 text-right">
-            <div className="flex items-center gap-2 justify-end">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              RECORDING
-            </div>
-            <div>ISO: 400</div>
-            <div>SHUTTER: 1/200</div>
-          </div>
+          {/* Data readouts - Dynamic Telemetry */}
+          <DroneTelemetry />
         </div>
       </motion.section>
 
