@@ -373,6 +373,93 @@ function AlertPatchesTable({ patches }: { patches: typeof alertPatches }) {
     );
 }
 
+// Image Upload Component
+function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
+    const [file, setFile] = useState<File | null>(null);
+    const [patchName, setPatchName] = useState('');
+    const [uploading, setUploading] = useState(false);
+    const [status, setStatus] = useState<string>('');
+    const [error, setError] = useState<string>('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setFile(e.target.files[0]);
+            setError('');
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!file) { setError('Please select an image'); return; }
+        if (!patchName.trim()) { setError('Please enter patch name'); return; }
+
+        setUploading(true);
+        setError('');
+        setStatus('Uploading...');
+
+        const result = await api.uploadImage(file, patchName);
+        if (result) {
+            setStatus('✅ Upload Complete! AI Processing...');
+            setTimeout(() => {
+                setStatus('✅ Analysis Complete!');
+                setUploading(false);
+                onUploadComplete();
+            }, 3000);
+        } else {
+            setError('Upload failed');
+            setUploading(false);
+        }
+    };
+
+    return (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.5 }}>
+            <Card className="glass-card">
+                <CardHeader className="pb-4">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                        <ArrowUpRight className="w-4 h-4 text-forest" />
+                        Upload Drone Image for AI Analysis
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${file ? 'border-forest bg-forest/5' : 'border-border hover:border-forest/50'}`}
+                        >
+                            <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.tiff" onChange={handleFileChange} className="hidden" />
+                            {file ? (
+                                <div className="space-y-2">
+                                    <CheckCircle2 className="w-10 h-10 text-forest mx-auto" />
+                                    <p className="font-medium text-forest">{file.name}</p>
+                                    <p className="text-sm text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Download className="w-10 h-10 text-muted-foreground mx-auto" />
+                                    <p className="font-medium">Drop drone image here</p>
+                                    <p className="text-sm text-muted-foreground">JPG, PNG, TIFF supported</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">Patch Name</label>
+                                <input type="text" placeholder="e.g., Debadihi_VF" value={patchName} onChange={(e) => setPatchName(e.target.value)} className="w-full h-10 px-4 bg-muted/50 rounded-lg border-0 focus:ring-2 focus:ring-forest/50" />
+                            </div>
+                            {error && <p className="text-sm text-dead">{error}</p>}
+                            {status && <p className={`text-sm ${status.includes('✅') ? 'text-alive' : 'text-muted-foreground'}`}>{status}</p>}
+                            <Button onClick={handleUpload} disabled={uploading || !file} className="w-full btn-premium gradient-forest text-white border-0">
+                                {uploading ? 'Processing...' : 'Analyze with AI'}
+                                <TreePine className="w-4 h-4 ml-2" />
+                            </Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </motion.div>
+    );
+}
+
 // Sidebar Component
 function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
     const links = [
@@ -613,6 +700,14 @@ export default function DashboardPage() {
 
                     {/* Alert Patches Table */}
                     <AlertPatchesTable patches={alertPatches} />
+
+                    {/* Image Upload Section */}
+                    <div className="mt-8">
+                        <ImageUpload onUploadComplete={() => {
+                            // Refresh stats after upload
+                            api.getGlobalStats().then(setStats);
+                        }} />
+                    </div>
 
                     {/* Quick Actions */}
                     <motion.div

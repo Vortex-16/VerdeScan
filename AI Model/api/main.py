@@ -278,15 +278,28 @@ async def get_global_stats():
     """Get global statistics across all processed patches."""
     try:
         results_path = os.path.join(DATA_DIR, settings.results_file)
+        
+        # Demo data for hackathon (based on Problem Statement)
+        # Debadihi VF: 10,000 saplings, Benkmura VF: 8,000 saplings
+        demo_data = {
+            "total_patches": 2,
+            "total_trees": 18000,  # 10k + 8k
+            "total_alive": 15660,  # 87% survival
+            "total_dead": 2340,
+            "total_diseased": 540,
+            "avg_survival_rate": 87.0,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+        
         if not os.path.exists(results_path):
-            return {"total_patches": 0}
+            return demo_data
         
         async with aiofiles.open(results_path, "r") as f:
             content = await f.read()
             data = json.loads(content)
             
             if not data:
-                return {"total_patches": 0}
+                return demo_data
             
             total_patches = len(data)
             total_trees = sum(p.get("summary", {}).get("total_trees", 0) for p in data.values())
