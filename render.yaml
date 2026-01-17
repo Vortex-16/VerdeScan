@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: verdescan-backend
+    env: python
+    region: singapore
+    buildCommand: |
+      cd "AI Model"
+      pip install -r requirements.txt
+    startCommand: |
+      cd "AI Model"
+      python run_server.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 10000

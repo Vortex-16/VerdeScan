@@ -79,6 +79,7 @@ Image/
 hackathon_dataset/
 synthetic_dataset/
 test_data/
+AI Model/processed_dataset/
 *.zip
 *.crdownload
 

@@ -14,13 +14,13 @@ def test_monitoring_logic():
     print("🌲 Testing Forest Monitoring Logic...")
     
     # 1. Create Synthetic Image for OP1 (Pits)
-    # 512x512 image, with 10 pits
-    op1_image = np.ones((512, 512, 3), dtype=np.uint8) * 200 # Light gray background
+    # 512x2000 image to fit 10 pits at 100px spacing (2.5m real world)
+    op1_image = np.ones((512, 1200, 3), dtype=np.uint8) * 200 # Light gray background
     
     # Draw 10 "Pits" (Dark squares, approx 18x18px)
     gt_pits = []
     for i in range(10):
-        x = 50 + i * 40
+        x = 50 + i * 100  # 100px spacing (= 2.5m at 2.5cm/px)
         y = 50
         cv2.rectangle(op1_image, (x, y), (x+18, y+18), (50, 50, 50), -1) # Dark gray pit
         # Add to ground truth list (center)
@@ -39,7 +39,7 @@ def test_monitoring_logic():
     # 3. Create Synthetic Image for OP3 (Weeding/Survival)
     # Simulate 80% survival (8 plants)
     # Weeding patch = Lighter circle
-    op3_image = np.ones((512, 512, 3), dtype=np.uint8) * 100 # Darker background (vegetation)
+    op3_image = np.ones((512, 1200, 3), dtype=np.uint8) * 100 # Darker background (vegetation)
     
     gt_survivors = []
     for i in range(8): # Only 8 surviving

@@ -18,12 +18,6 @@ class ForestDataset(Dataset):
     def __init__(self, image_paths: List[str], transform=None):
         self.image_paths = image_paths
         self.transform = transform
-        # For this hackathon challenge, since we don't have explicit labels for every single image
-        # readily available in a structured format in this script, we will create a dummy label
-        # or Auto-Encoder approach. For now, let's assume we are training a feature extractor
-        # or basic classification if we can deduce labels from folder names.
-        # Since folder names are 'Raw Data', we will assign a dummy label 0.
-        # REAL IMPLEMENTATION WOULD REQUIRE ANNOTATIONS.
         self.labels = [0] * len(image_paths) 
     
     def __len__(self):
@@ -89,36 +83,36 @@ def find_images(base_paths):
     return all_images
 
 def main():
-    print("🌲 Starting Forest Model Training (Hackathon Mode)...")
+    print("🌲 Starting Real Forest Model Training (Patch-Based)...")
     
-    # 1. Define Data Paths based on user's manual download
-    data_paths = [
-        r"c:\Code\VerdeScan\Data\Image\Drone Data\Debadihi VF\Raw Data",
-        r"c:\Code\VerdeScan\Data\Image\Drone image\Benkmura VF\Raw Data"
-    ]
+    # 1. Define Data Path (Processed Tiles)
+    data_path = Path("processed_dataset")
     
-    # 2. Collect Images
-    images = find_images(data_paths)
-    print(f"✅ Found {len(images)} images total.")
-    
-    if len(images) == 0:
-        print("❌ No images found! Check paths.")
+    if not data_path.exists():
+        print(f"❌ Dataset not found at {data_path}. Run dataset_preparer.py first.")
         return False
-
-    # 3. Setup Training
+        
+    # 2. Setup Training Logic
     transform = transforms.Compose([
-        transforms.ToPILImage(),
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    # Use a subset for quick proof-of-concept training if many images
-    if len(images) > 500:
-        print("Using subset of 500 images for speed...")
-        images = images[:500]
-
-    dataset = ForestDataset(images, transform=transform)
-    loader = DataLoader(dataset, batch_size=16, shuffle=True)
+    # Use ImageFolder which automatically assigns labels based on folders (pit=0, sapling=1)
+    from torchvision.datasets import ImageFolder
+    full_dataset = ImageFolder(root=data_path, transform=transform)
+    
+    print(f"✅ Found {len(full_dataset)} training tiles.")
+    print(f"   Classes: {full_dataset.classes}")
+    
+    # Split Train/Val
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+    
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -127,21 +121,52 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
     
-    # 4. Train Loop (1 Epoch for Setup Check)
-    print("🚀 Starting training loop...")
-    model.train()
-    for batch_idx, (data, target) in enumerate(loader):
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
+    # 4. Train Loop (3 Epochs)
+    epochs = 3
+    print(f"🚀 Starting training for {epochs} epochs...")
+    
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        correct = 0
+        total = 0
         
-        if batch_idx % 10 == 0:
-            print(f"Batch {batch_idx}/{len(loader)} Loss: {loss.item():.4f}")
+        for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
             
-    # 5. Save Model
+            total_loss += loss.item()
+            _, predicted = torch.max(output.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+            
+            if batch_idx % 10 == 0:
+                print(f"Epoch {epoch+1} Batch {batch_idx}/{len(train_loader)} Loss: {loss.item():.4f}")
+        
+        avg_loss = total_loss / len(train_loader)
+        acc = 100 * correct / total
+        print(f"Epoch {epoch+1} Complete. Avg Loss: {avg_loss:.4f} | Accuracy: {acc:.2f}%")
+        
+    # 5. Validation
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for data, target in val_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            _, predicted = torch.max(output.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+            
+    val_acc = 100 * correct / total
+    print(f"📊 Validation Accuracy: {val_acc:.2f}%")
+            
+    # 6. Save Model
     os.makedirs("ml_models", exist_ok=True)
     save_path = "ml_models/forest_model.pth"
     torch.save(model.state_dict(), save_path)
