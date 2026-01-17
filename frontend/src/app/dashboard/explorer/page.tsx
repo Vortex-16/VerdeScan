@@ -31,7 +31,8 @@ import {
     Bell,
     Calendar,
     ArrowLeft,
-    Eye
+    Eye,
+    RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,28 +41,29 @@ import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 
-// Mock patch data
-const mockPatches = [
-    { id: 'KL-042', name: 'Khordha Zone A', lat: 20.2961, lng: 85.8245, survival: 87.2, planted: 4520, alive: 3941, dead: 579, status: 'healthy' },
-    { id: 'MN-018', name: 'Mayurbhanj Sector B', lat: 21.9370, lng: 86.7270, survival: 62.5, planted: 3200, alive: 2000, dead: 1200, status: 'critical' },
-    { id: 'AB-103', name: 'Angul District C', lat: 20.8400, lng: 85.1000, survival: 78.4, planted: 5100, alive: 3998, dead: 1102, status: 'warning' },
-    { id: 'PQ-156', name: 'Puri Coastal Zone', lat: 19.8135, lng: 85.8312, survival: 74.8, planted: 2800, alive: 2094, dead: 706, status: 'warning' },
-    { id: 'JK-042', name: 'Jajpur East', lat: 20.8548, lng: 86.3368, survival: 68.2, planted: 4100, alive: 2796, dead: 1304, status: 'critical' },
-    { id: 'CT-078', name: 'Cuttack Central', lat: 20.4625, lng: 85.8830, survival: 91.3, planted: 3600, alive: 3287, dead: 313, status: 'healthy' },
-];
+// Patch interface based on real API data
+interface PatchInfo {
+    id: string;
+    name: string;
+    survival: number;
+    planted: number;
+    alive: number;
+    dead: number;
+    status: 'healthy' | 'warning' | 'critical';
+    trees: TreeInfo[];
+}
 
-// Mock sapling data for selected patch
-const mockSaplings = Array.from({ length: 50 }, (_, i) => ({
-    id: `SAP-${i.toString().padStart(4, '0')}`,
-    lat: 20.2961 + (Math.random() - 0.5) * 0.01,
-    lng: 85.8245 + (Math.random() - 0.5) * 0.01,
-    status: Math.random() > 0.15 ? (Math.random() > 0.1 ? 'alive' : 'uncertain') : 'dead',
-    confidence: 70 + Math.random() * 30,
-}));
+interface TreeInfo {
+    id: string;
+    status: 'alive' | 'dead' | 'uncertain';
+    confidence: number;
+    bbox: { x: number; y: number; width: number; height: number };
+}
 
 // Sapling Inspection Panel
-function SaplingPanel({ sapling, onClose }: { sapling: typeof mockSaplings[0] | null; onClose: () => void }) {
+function SaplingPanel({ sapling, onClose }: { sapling: TreeInfo | null; onClose: () => void }) {
     if (!sapling) return null;
 
     const statusConfig = {
@@ -135,12 +137,12 @@ function SaplingPanel({ sapling, onClose }: { sapling: typeof mockSaplings[0] | 
                     <CardContent className="p-4 pt-0">
                         <div className="space-y-2 mb-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Latitude</span>
-                                <span className="font-mono">{sapling.lat.toFixed(6)}° N</span>
+                                <span className="text-sm text-muted-foreground">Position X</span>
+                                <span className="font-mono">{sapling.bbox.x}px</span>
                             </div>
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Longitude</span>
-                                <span className="font-mono">{sapling.lng.toFixed(6)}° E</span>
+                                <span className="text-sm text-muted-foreground">Position Y</span>
+                                <span className="font-mono">{sapling.bbox.y}px</span>
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -381,11 +383,11 @@ function MapView({
     onSelectPatch,
     onSelectSapling
 }: {
-    patches: typeof mockPatches;
-    saplings: typeof mockSaplings;
-    selectedPatch: typeof mockPatches[0] | null;
-    onSelectPatch: (patch: typeof mockPatches[0] | null) => void;
-    onSelectSapling: (sapling: typeof mockSaplings[0]) => void;
+    patches: PatchInfo[];
+    saplings: TreeInfo[];
+    selectedPatch: PatchInfo | null;
+    onSelectPatch: (patch: PatchInfo | null) => void;
+    onSelectSapling: (sapling: TreeInfo) => void;
 }) {
     return (
         <div className="relative flex-1 bg-gradient-to-br from-forest/5 to-forest/10 overflow-hidden">
@@ -453,8 +455,8 @@ function MapView({
                                             transition={{ delay: sIndex * 0.01 }}
                                             onClick={(e) => { e.stopPropagation(); onSelectSapling(sapling); }}
                                             className={`absolute w-3 h-3 rounded-full cursor-pointer transition-transform hover:scale-150 ${sapling.status === 'alive' ? 'bg-alive shadow-alive/50' :
-                                                    sapling.status === 'dead' ? 'bg-dead shadow-dead/50' :
-                                                        'bg-uncertain shadow-uncertain/50'
+                                                sapling.status === 'dead' ? 'bg-dead shadow-dead/50' :
+                                                    'bg-uncertain shadow-uncertain/50'
                                                 } shadow-lg`}
                                             style={{ left: `${sLeft}%`, top: `${sTop}%` }}
                                         />
@@ -488,8 +490,8 @@ function MapView({
                             </div>
                             <Badge
                                 className={`${selectedPatch.status === 'critical' ? 'bg-dead/10 text-dead' :
-                                        selectedPatch.status === 'warning' ? 'bg-uncertain/10 text-uncertain' :
-                                            'bg-alive/10 text-alive'
+                                    selectedPatch.status === 'warning' ? 'bg-uncertain/10 text-uncertain' :
+                                        'bg-alive/10 text-alive'
                                     } border-0`}
                             >
                                 {selectedPatch.status === 'critical' ? 'Critical' : selectedPatch.status === 'warning' ? 'Warning' : 'Healthy'}
@@ -534,9 +536,58 @@ function MapView({
 
 // Main Patch Explorer Page
 export default function PatchExplorerPage() {
-    const [selectedPatch, setSelectedPatch] = useState<typeof mockPatches[0] | null>(null);
-    const [selectedSapling, setSelectedSapling] = useState<typeof mockSaplings[0] | null>(null);
+    const [patches, setPatches] = useState<PatchInfo[]>([]);
+    const [selectedPatch, setSelectedPatch] = useState<PatchInfo | null>(null);
+    const [selectedSapling, setSelectedSapling] = useState<TreeInfo | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    // Fetch patches from API
+    useEffect(() => {
+        async function fetchPatches() {
+            setLoading(true);
+            try {
+                const patchNames = await api.getPatches();
+                const patchDataPromises = patchNames.map(async (name: string) => {
+                    const details = await api.getPatchDetails(name);
+                    if (details) {
+                        const trees = details.trees || [];
+                        const alive = trees.filter((t: any) => t.classification === 'sapling' || t.health_status === 'healthy').length;
+                        const dead = trees.filter((t: any) => t.health_status === 'dead' || t.health_status === 'unhealthy').length;
+                        const total = trees.length || 1;
+                        const survivalRate = (alive / total) * 100;
+
+                        return {
+                            id: name,
+                            name: name,
+                            survival: survivalRate,
+                            planted: total,
+                            alive: alive,
+                            dead: dead,
+                            status: survivalRate >= 85 ? 'healthy' : survivalRate >= 70 ? 'warning' : 'critical',
+                            trees: trees.map((t: any, i: number) => ({
+                                id: t.tree_id || `TREE-${i}`,
+                                status: t.health_status === 'healthy' ? 'alive' : t.health_status === 'dead' ? 'dead' : 'uncertain',
+                                confidence: (t.classification_confidence || 0.8) * 100,
+                                bbox: t.bbox || { x: 0, y: 0, width: 50, height: 50 }
+                            }))
+                        } as PatchInfo;
+                    }
+                    return null;
+                });
+
+                const patchData = (await Promise.all(patchDataPromises)).filter(Boolean) as PatchInfo[];
+                setPatches(patchData);
+            } catch (error) {
+                console.error('Error fetching patches:', error);
+            }
+            setLoading(false);
+        }
+        fetchPatches();
+    }, []);
+
+    // Convert trees to sapling format for MapView
+    const saplings = selectedPatch?.trees || [];
 
     return (
         <div className="h-screen flex flex-col bg-background">
@@ -553,10 +604,12 @@ export default function PatchExplorerPage() {
                             <Map className="w-4 h-4 text-white" />
                         </div>
                         <h1 className="font-semibold">Patch Explorer</h1>
+                        {loading && <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />}
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{patches.length} Patches</Badge>
                     <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
                         <Filter className="w-5 h-5" />
                     </Button>
@@ -582,8 +635,8 @@ export default function PatchExplorerPage() {
 
                 {/* Map View */}
                 <MapView
-                    patches={mockPatches}
-                    saplings={mockSaplings}
+                    patches={patches}
+                    saplings={saplings}
                     selectedPatch={selectedPatch}
                     onSelectPatch={setSelectedPatch}
                     onSelectSapling={setSelectedSapling}

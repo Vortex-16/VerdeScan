@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
     FileText,
@@ -16,21 +16,26 @@ import {
     Settings,
     X,
     Clock,
-    CheckCircle2
+    CheckCircle2,
+    RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { AnimatePresence } from 'framer-motion';
+import { api } from '@/lib/api';
 
-// Mock data
-const recentReports = [
-    { id: 1, name: 'Q4 2024 State Summary', date: '2024-12-31', size: '2.4 MB', format: 'PDF', status: 'completed' },
-    { id: 2, name: 'Khordha District Report', date: '2024-12-15', size: '1.8 MB', format: 'PDF', status: 'completed' },
-    { id: 3, name: 'Critical Patches Analysis', date: '2024-12-01', size: '3.1 MB', format: 'Excel', status: 'completed' },
-    { id: 4, name: 'Annual Summary 2024', date: '2024-11-30', size: '5.2 MB', format: 'PDF', status: 'completed' },
-];
+// Report interface
+interface Report {
+    id: number;
+    name: string;
+    date: string;
+    size: string;
+    format: string;
+    status: string;
+    patchId?: string;
+}
 
 // Sidebar Component
 function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -127,6 +132,104 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 
 export default function ReportsPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [reports, setReports] = useState<Report[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // Fetch patches and generate dynamic reports
+    useEffect(() => {
+        async function fetchAndGenerateReports() {
+            setLoading(true);
+            try {
+                const patchNames = await api.getPatches();
+                const globalStats = await api.getGlobalStats();
+
+                // Generate reports based on actual processed patches
+                const dynamicReports: Report[] = patchNames.map((name: string, i: number) => ({
+                    id: i + 1,
+                    name: `${name} Analysis Report`,
+                    date: new Date().toISOString().split('T')[0],
+                    size: `${(Math.random() * 2 + 0.5).toFixed(1)} MB`,
+                    format: 'CSV',
+                    status: 'completed',
+                    patchId: name
+                }));
+
+                // Add a summary report if we have data
+                if (globalStats.total_patches > 0) {
+                    dynamicReports.unshift({
+                        id: 0,
+                        name: `Overall Summary - ${globalStats.total_patches} Patches`,
+                        date: globalStats.last_updated?.split('T')[0] || new Date().toISOString().split('T')[0],
+                        size: `${(globalStats.total_trees * 0.001).toFixed(1)} KB`,
+                        format: 'CSV',
+                        status: 'completed'
+                    });
+                }
+
+                setReports(dynamicReports);
+            } catch (error) {
+                console.error('Error generating reports:', error);
+            }
+            setLoading(false);
+        }
+        fetchAndGenerateReports();
+    }, []);
+
+    const handleDownload = async (report: Report) => {
+        try {
+            let content = '';
+            let mimeType = '';
+            const filename = `${report.name.replace(/\s+/g, '_')}.${report.format.toLowerCase()}`;
+
+            if (report.id === 0) {
+                // Global Summary
+                const stats = await api.getGlobalStats();
+                const headers = ['Total Patches', 'Total Trees', 'Alive', 'Dead', 'Diseased', 'Avg Survival Rate', 'Last Updated'];
+                const row = [
+                    stats.total_patches,
+                    stats.total_trees,
+                    stats.total_alive,
+                    stats.total_dead,
+                    stats.total_diseased,
+                    stats.avg_survival_rate,
+                    stats.last_updated
+                ].join(',');
+                content = [headers.join(','), row].join('\n');
+                mimeType = 'text/csv';
+            } else if (report.patchId) {
+                // Patch Detail CSV
+                const details = await api.getPatchDetails(report.patchId);
+                if (details) {
+                    const headers = ['Tree ID', 'Classification', 'Confidence', 'Health', 'X', 'Y'];
+                    const rows = details.trees.map(t => [
+                        t.tree_id,
+                        t.classification,
+                        t.classification_confidence,
+                        t.health_status,
+                        t.bbox.x,
+                        t.bbox.y
+                    ].join(','));
+                    content = [headers.join(','), ...rows].join('\n');
+                    mimeType = 'text/csv';
+                }
+            }
+
+            if (content) {
+                const blob = new Blob([content], { type: mimeType });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }
+        } catch (error) {
+            console.error('Download failed:', error);
+            alert('Failed to download report');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-background">
@@ -173,7 +276,11 @@ export default function ReportsPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-2">
-                                {recentReports.map((report, index) => (
+                                {loading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+                                    </div>
+                                ) : reports.length > 0 ? reports.map((report: Report, index: number) => (
                                     <motion.div
                                         key={report.id}
                                         initial={{ opacity: 0, y: 10 }}
@@ -203,12 +310,21 @@ export default function ReportsPage() {
                                                 <CheckCircle2 className="w-3 h-3 mr-1" />
                                                 {report.status}
                                             </Badge>
-                                            <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => handleDownload(report)}
+                                            >
                                                 <Download className="w-4 h-4" />
                                             </Button>
                                         </div>
                                     </motion.div>
-                                ))}
+                                )) : (
+                                    <p className="text-sm text-muted-foreground text-center py-8">
+                                        No reports yet. Upload and process drone images to generate reports.
+                                    </p>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -222,7 +338,21 @@ export default function ReportsPage() {
                                 </div>
                                 <h3 className="font-medium mb-1">State Summary</h3>
                                 <p className="text-xs text-muted-foreground mb-3">Complete state-level overview</p>
-                                <Button variant="outline" size="sm" className="w-full">Generate</Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() => handleDownload({
+                                        id: 0,
+                                        name: 'State Summary',
+                                        date: '',
+                                        size: '',
+                                        format: 'CSV',
+                                        status: 'completed'
+                                    })}
+                                >
+                                    Generate
+                                </Button>
                             </CardContent>
                         </Card>
 
@@ -231,9 +361,19 @@ export default function ReportsPage() {
                                 <div className="w-10 h-10 rounded-lg bg-alive/10 flex items-center justify-center mb-3">
                                     <Map className="w-5 h-5 text-alive" />
                                 </div>
-                                <h3 className="font-medium mb-1">District Report</h3>
-                                <p className="text-xs text-muted-foreground mb-3">Detailed district analysis</p>
-                                <Button variant="outline" size="sm" className="w-full">Generate</Button>
+                                <h3 className="font-medium mb-1">Patch Report</h3>
+                                <p className="text-xs text-muted-foreground mb-3">Detailed patch analysis</p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() => {
+                                        if (reports.length > 0) handleDownload(reports[0]); // Download first available patch report
+                                        else alert('No patches available');
+                                    }}
+                                >
+                                    Generate
+                                </Button>
                             </CardContent>
                         </Card>
 

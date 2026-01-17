@@ -39,14 +39,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { api, GlobalStats } from '@/lib/api';
 
-// Mock alert patches (keep these for UI demo until backend has per-patch alerts)
-const alertPatches = [
-    { id: 'MN-018', location: 'Zone 3, Sector B', survival: 62.5, status: 'critical', lastSurvey: '2 days ago' },
-    { id: 'JK-042', location: 'Zone 5, Sector A', survival: 68.2, status: 'critical', lastSurvey: '5 days ago' },
-    { id: 'AB-091', location: 'Zone 1, Sector C', survival: 71.4, status: 'warning', lastSurvey: '1 week ago' },
-    { id: 'PQ-156', location: 'Zone 4, Sector D', survival: 74.8, status: 'warning', lastSurvey: '3 days ago' },
-    { id: 'KL-042', location: 'Zone 2, Sector A', survival: 87.2, status: 'healthy', lastSurvey: '1 day ago' },
-];
+// Interface for patch alerts
+interface PatchAlert {
+    id: string;
+    location: string;
+    survival: number;
+    status: 'critical' | 'warning' | 'healthy';
+    lastSurvey: string;
+}
 
 // Reusable counter hook
 function useCounter(target: number, duration: number = 2000) {
@@ -55,11 +55,9 @@ function useCounter(target: number, duration: number = 2000) {
     const hasAnimated = useRef(false);
 
     useEffect(() => {
-        if (hasAnimated.current) return;
-
-        // Reset count if target changes
-        setCount(0);
+        // Reset animation state when target changes
         hasAnimated.current = false;
+        setCount(0);
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -276,7 +274,7 @@ function YearProgress({ yearProgress }: { yearProgress: { year1: number; year2: 
 }
 
 // Alert Patches Table
-function AlertPatchesTable({ patches }: { patches: typeof alertPatches }) {
+function AlertPatchesTable({ patches }: { patches: PatchAlert[] }) {
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -560,6 +558,7 @@ export default function DashboardPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [selectedYear, setSelectedYear] = useState('2024');
     const [loading, setLoading] = useState(true);
+    const [patches, setPatches] = useState<PatchAlert[]>([]);
     const [stats, setStats] = useState<GlobalStats>({
         total_patches: 0,
         total_trees: 0,
@@ -571,16 +570,52 @@ export default function DashboardPage() {
     });
 
     useEffect(() => {
-        async function fetchStats() {
+        async function fetchData() {
             setLoading(true);
-            const data = await api.getGlobalStats();
-            setStats(data);
+            try {
+                // Fetch stats
+                const data = await api.getGlobalStats();
+                setStats(data);
+
+                // Fetch patches
+                const patchNames = await api.getPatches();
+                const patchDetails = await Promise.all(
+                    patchNames.slice(0, 5).map(async (name) => {
+                        const details = await api.getPatchDetails(name);
+                        if (!details) return null;
+
+                        const total = details.summary.total_trees;
+                        const validTotal = total > 0 ? total : 1;
+                        const survival = (details.summary.alive_trees / validTotal) * 100;
+
+                        let status: 'critical' | 'warning' | 'healthy' = 'healthy';
+                        if (survival < 50) status = 'critical';
+                        else if (survival < 75) status = 'warning';
+
+                        const date = details.metadata?.timestamp
+                            ? new Date(details.metadata.timestamp).toLocaleDateString()
+                            : 'Just now';
+
+                        return {
+                            id: name.length > 15 ? name.substring(0, 15) + '...' : name,
+                            location: `Sector ${name.charAt(0).toUpperCase() + name.slice(1, 3)}`, // Pseudonymize location
+                            survival: parseFloat(survival.toFixed(1)),
+                            status,
+                            lastSurvey: date
+                        };
+                    })
+                );
+                setPatches(patchDetails.filter(Boolean) as PatchAlert[]);
+
+            } catch (error) {
+                console.error("Failed to fetch dashboard data:", error);
+            }
             setLoading(false);
         }
-        fetchStats();
+        fetchData();
 
         // Refresh every 30 seconds
-        const interval = setInterval(fetchStats, 30000);
+        const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, []);
 
@@ -699,7 +734,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Alert Patches Table */}
-                    <AlertPatchesTable patches={alertPatches} />
+                    <AlertPatchesTable patches={patches} />
 
                     {/* Image Upload Section */}
                     <div className="mt-8">
