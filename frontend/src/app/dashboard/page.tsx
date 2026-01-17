@@ -170,16 +170,18 @@ function KPICard({
 
 // Survival Rate Gauge
 function SurvivalGauge({ value }: { value: number }) {
+    // Default to 0 if value is undefined/null
+    const safeValue = value ?? 0;
     const [animatedValue, setAnimatedValue] = useState(0);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            setAnimatedValue(value);
+            setAnimatedValue(safeValue);
         }, 500);
         return () => clearTimeout(timer);
-    }, [value]);
+    }, [safeValue]);
 
-    const status = value >= 85 ? 'healthy' : value >= 70 ? 'warning' : 'critical';
+    const status = safeValue >= 85 ? 'healthy' : safeValue >= 70 ? 'warning' : 'critical';
     const statusConfig = {
         healthy: { label: 'Healthy', color: 'bg-alive', textColor: 'text-alive' },
         warning: { label: 'Needs Attention', color: 'bg-uncertain', textColor: 'text-uncertain' },
