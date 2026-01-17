@@ -53,6 +53,8 @@ interface PatchInfo {
     dead: number;
     status: 'healthy' | 'warning' | 'critical';
     trees: TreeInfo[];
+    imageUrl?: string;
+    imageDimensions?: [number, number];
 }
 
 interface TreeInfo {
@@ -389,83 +391,126 @@ function MapView({
     onSelectPatch: (patch: PatchInfo | null) => void;
     onSelectSapling: (sapling: TreeInfo) => void;
 }) {
+    const [imgError, setImgError] = useState(false);
+
+    // Reset error when selected patch changes
+    useEffect(() => {
+        setImgError(false);
+    }, [selectedPatch]);
+
     return (
         <div className="relative flex-1 bg-gradient-to-br from-forest/5 to-forest/10 overflow-hidden">
             {/* Grid pattern for map background */}
-            <div className="absolute inset-0 grid-pattern opacity-30" />
+            {!selectedPatch?.imageUrl && (
+                <>
+                    <div className="absolute inset-0 grid-pattern opacity-30" />
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm border border-border px-4 py-2 rounded-full text-sm font-medium pointer-events-none z-20 flex items-center gap-2 shadow-sm">
+                        <MapPin className="w-4 h-4 text-forest" />
+                        Select a patch to view drone imagery
+                    </div>
+                </>
+            )}
 
-            {/* Simulated map with patches */}
-            <div className="absolute inset-0 p-8">
-                {/* Patch polygons */}
-                {patches.map((patch, index) => {
-                    const left = 10 + (index % 3) * 30;
-                    const top = 15 + Math.floor(index / 3) * 35;
-                    const isSelected = selectedPatch?.id === patch.id;
+            {/* Simulated map with patches OR Real Image View */}
+            <div className={`absolute inset-0 ${selectedPatch?.imageUrl ? 'flex items-center justify-center bg-black/90' : 'p-8'}`}>
 
-                    return (
-                        <motion.div
-                            key={patch.id}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: index * 0.1, duration: 0.4 }}
-                            onClick={() => onSelectPatch(isSelected ? null : patch)}
-                            className={`absolute cursor-pointer transition-all duration-300 ${isSelected ? 'z-10' : 'z-0'}`}
-                            style={{ left: `${left}%`, top: `${top}%` }}
-                        >
-                            {/* Patch polygon shape */}
-                            <svg
-                                width="120"
-                                height="100"
-                                viewBox="0 0 120 100"
-                                className={`transition-all duration-300 ${isSelected ? 'scale-110' : 'hover:scale-105'}`}
-                            >
-                                <path
-                                    d="M10,30 L30,10 L90,15 L110,40 L100,80 L60,95 L20,85 Z"
-                                    fill={patch.status === 'critical' ? 'rgba(220, 38, 38, 0.3)' : patch.status === 'warning' ? 'rgba(234, 179, 8, 0.3)' : 'rgba(34, 197, 94, 0.3)'}
-                                    stroke={patch.status === 'critical' ? '#dc2626' : patch.status === 'warning' ? '#eab308' : '#22c55e'}
-                                    strokeWidth={isSelected ? 3 : 2}
-                                    className="transition-all duration-300"
+                {selectedPatch?.imageUrl && !imgError ? (
+                    <div className="relative inline-block" style={{ maxHeight: '100%', maxWidth: '100%' }}>
+                        <img
+                            src={selectedPatch.imageUrl}
+                            alt={selectedPatch.name}
+                            className="max-h-full max-w-full object-contain shadow-2xl"
+                            style={{ maxHeight: 'calc(100vh - 120px)' }}
+                            onError={() => setImgError(true)}
+                        />
+                        {/* Overlay Real Bounding Boxes */}
+                        {saplings.map((sapling, i) => {
+                            const dims = selectedPatch.imageDimensions || [4000, 3000];
+                            const left = (sapling.bbox.x / dims[0]) * 100;
+                            const top = (sapling.bbox.y / dims[1]) * 100;
+                            const width = (sapling.bbox.width / dims[0]) * 100;
+                            const height = (sapling.bbox.height / dims[1]) * 100;
+
+                            return (
+                                <div
+                                    key={sapling.id || `sapling-${i}`}
+                                    className={`absolute border-2 ${sapling.status === 'alive' ? 'border-alive/80 bg-alive/20' :
+                                        sapling.status === 'dead' ? 'border-dead/80 bg-dead/20' :
+                                            'border-uncertain/80 bg-uncertain/20'
+                                        } hover:bg-white/30 cursor-pointer transition-all hover:border-white z-10`}
+                                    style={{
+                                        left: `${left}%`,
+                                        top: `${top}%`,
+                                        width: `${width}%`,
+                                        height: `${height}%`
+                                    }}
+                                    onClick={(e) => { e.stopPropagation(); onSelectSapling(sapling); }}
+                                    title={`Confidence: ${sapling.confidence.toFixed(0)}%`}
                                 />
-                            </svg>
+                            );
+                        })}
+                    </div>
+                ) : selectedPatch?.imageUrl && imgError ? (
+                    <div className="flex flex-col items-center justify-center text-muted-foreground p-8 text-center bg-card rounded-xl border border-border max-w-md">
+                        <XCircle className="w-12 h-12 mb-4 text-dead" />
+                        <h3 className="text-lg font-semibold text-foreground mb-2">Image Not Found</h3>
+                        <p className="mb-4">The original image for this patch is missing from the server.</p>
+                        <Button variant="outline" onClick={() => onSelectPatch(null)}>
+                            Go Back
+                        </Button>
+                    </div>
+                ) : (
+                    /* Default Simulated Overview */
+                    patches.map((patch, index) => {
+                        const left = 10 + (index % 3) * 30;
+                        const top = 15 + Math.floor(index / 3) * 35;
+                        const isSelected = selectedPatch?.id === patch.id;
 
-                            {/* Patch label on hover */}
+                        return (
                             <motion.div
-                                initial={false}
-                                animate={{ opacity: isSelected ? 1 : 0 }}
-                                className="absolute left-1/2 -translate-x-1/2 top-full mt-2 glass-card rounded-lg px-3 py-2 whitespace-nowrap pointer-events-none"
+                                key={patch.id || `patch-${index}`}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: index * 0.1, duration: 0.4 }}
+                                onClick={() => onSelectPatch(isSelected ? null : patch)}
+                                className={`absolute cursor-pointer transition-all duration-300 ${isSelected ? 'z-10' : 'z-0'}`}
+                                style={{ left: `${left}%`, top: `${top}%` }}
                             >
-                                <p className="font-semibold text-sm">{patch.id}</p>
-                                <p className="text-xs text-muted-foreground">{patch.name}</p>
-                                <p className={`text-xs font-medium ${patch.status === 'critical' ? 'text-dead' : patch.status === 'warning' ? 'text-uncertain' : 'text-alive'}`}>
-                                    Survival: {patch.survival}%
-                                </p>
-                            </motion.div>
+                                {/* Patch polygon shape */}
+                                <svg
+                                    width="120"
+                                    height="100"
+                                    viewBox="0 0 120 100"
+                                    className={`transition-all duration-300 ${isSelected ? 'scale-110' : 'hover:scale-105'}`}
+                                >
+                                    <path
+                                        d="M10,30 L30,10 L90,15 L110,40 L100,80 L60,95 L20,85 Z"
+                                        fill={patch.status === 'critical' ? 'rgba(220, 38, 38, 0.3)' : patch.status === 'warning' ? 'rgba(234, 179, 8, 0.3)' : 'rgba(34, 197, 94, 0.3)'}
+                                        stroke={patch.status === 'critical' ? '#dc2626' : patch.status === 'warning' ? '#eab308' : '#22c55e'}
+                                        strokeWidth={isSelected ? 3 : 2}
+                                        className="transition-all duration-300"
+                                    />
+                                </svg>
 
-                            {/* Sapling markers when patch is selected */}
-                            <AnimatePresence>
-                                {isSelected && saplings.map((sapling, sIndex) => {
-                                    const sLeft = 20 + (sIndex % 10) * 8;
-                                    const sTop = 20 + Math.floor(sIndex / 10) * 15;
-                                    return (
-                                        <motion.div
-                                            key={sapling.id}
-                                            initial={{ opacity: 0, scale: 0 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0 }}
-                                            transition={{ delay: sIndex * 0.01 }}
-                                            onClick={(e) => { e.stopPropagation(); onSelectSapling(sapling); }}
-                                            className={`absolute w-3 h-3 rounded-full cursor-pointer transition-transform hover:scale-150 ${sapling.status === 'alive' ? 'bg-alive shadow-alive/50' :
-                                                sapling.status === 'dead' ? 'bg-dead shadow-dead/50' :
-                                                    'bg-uncertain shadow-uncertain/50'
-                                                } shadow-lg`}
-                                            style={{ left: `${sLeft}%`, top: `${sTop}%` }}
-                                        />
-                                    );
-                                })}
-                            </AnimatePresence>
-                        </motion.div>
-                    );
-                })}
+                                {/* Patch label on hover */}
+                                <motion.div
+                                    initial={false}
+                                    animate={{ opacity: isSelected ? 1 : 0 }}
+                                    className="absolute left-1/2 -translate-x-1/2 top-full mt-2 glass-card rounded-lg px-3 py-2 whitespace-nowrap pointer-events-none"
+                                >
+                                    <p className="font-semibold text-sm">{patch.id}</p>
+                                    <p className="text-xs text-muted-foreground">{patch.name}</p>
+                                    <p className={`text-xs font-medium ${patch.status === 'critical' ? 'text-dead' : patch.status === 'warning' ? 'text-uncertain' : 'text-alive'}`}>
+                                        Survival: {patch.survival}%
+                                    </p>
+                                    <p className="text-[10px] text-blue-300 mt-1 flex items-center gap-1">
+                                        <Eye className="w-3 h-3" /> Click to view image
+                                    </p>
+                                </motion.div>
+                            </motion.div>
+                        );
+                    })
+                )}
             </div>
 
             {/* Map controls */}
@@ -478,6 +523,7 @@ function MapView({
             <AnimatePresence>
                 {selectedPatch && (
                     <motion.div
+                        key={selectedPatch.id}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 20 }}
@@ -520,7 +566,7 @@ function MapView({
                         </div>
 
                         <div className="mt-4 flex gap-2">
-                            <Link href="/dashboard/temporal" className="flex-1">
+                            <Link href={`/dashboard/temporal?id=${encodeURIComponent(selectedPatch.id)}`} className="flex-1">
                                 <Button size="sm" className="w-full gradient-forest text-white border-0">
                                     <Eye className="w-4 h-4 mr-1" />
                                     Temporal View
@@ -547,36 +593,35 @@ export default function PatchExplorerPage() {
         async function fetchPatches() {
             setLoading(true);
             try {
-                const patchNames = await api.getPatches();
-                const patchDataPromises = patchNames.map(async (name: string) => {
-                    const details = await api.getPatchDetails(name);
-                    if (details) {
-                        const trees = details.trees || [];
-                        const alive = trees.filter((t: any) => t.classification === 'sapling' || t.health_status === 'healthy').length;
-                        const dead = trees.filter((t: any) => t.health_status === 'dead' || t.health_status === 'unhealthy').length;
-                        const total = trees.length || 1;
-                        const survivalRate = (alive / total) * 100;
+                const allDetails = await api.getAllPatchDetails();
 
-                        return {
-                            id: name,
-                            name: name,
-                            survival: survivalRate,
-                            planted: total,
-                            alive: alive,
-                            dead: dead,
-                            status: survivalRate >= 85 ? 'healthy' : survivalRate >= 70 ? 'warning' : 'critical',
-                            trees: trees.map((t: any, i: number) => ({
-                                id: t.tree_id || `TREE-${i}`,
-                                status: t.health_status === 'healthy' ? 'alive' : t.health_status === 'dead' ? 'dead' : 'uncertain',
-                                confidence: (t.classification_confidence || 0.8) * 100,
-                                bbox: t.bbox || { x: 0, y: 0, width: 50, height: 50 }
-                            }))
-                        } as PatchInfo;
-                    }
-                    return null;
+                const patchData = allDetails.map((details) => {
+                    const name = details.patch_id;
+                    const trees = details.trees || [];
+                    const alive = trees.filter((t: any) => t.classification === 'sapling' || t.health_status === 'healthy').length;
+                    const dead = trees.filter((t: any) => t.health_status === 'dead' || t.health_status === 'unhealthy').length;
+                    const total = trees.length;
+                    const survivalRate = total > 0 ? (alive / total) * 100 : 0;
+
+                    return {
+                        id: name,
+                        name: name,
+                        survival: survivalRate,
+                        planted: total,
+                        alive: alive,
+                        dead: dead,
+                        status: survivalRate >= 85 ? 'healthy' : survivalRate >= 70 ? 'warning' : 'critical',
+                        trees: trees.map((t: any, i: number) => ({
+                            id: t.tree_id || `TREE-${i}`,
+                            status: t.health_status === 'healthy' ? 'alive' : t.health_status === 'dead' ? 'dead' : 'uncertain',
+                            confidence: (t.classification_confidence || 0.8) * 100,
+                            bbox: t.bbox || { x: 0, y: 0, width: 50, height: 50 }
+                        })),
+                        imageUrl: (details as any).metadata?.filename ? api.getImageUrl((details as any).metadata.filename) : undefined,
+                        imageDimensions: (details as any).metadata?.dimensions
+                    } as PatchInfo;
                 });
 
-                const patchData = (await Promise.all(patchDataPromises)).filter(Boolean) as PatchInfo[];
                 setPatches(patchData);
             } catch (error) {
                 console.error('Error fetching patches:', error);
@@ -645,7 +690,7 @@ export default function PatchExplorerPage() {
                 {/* Sapling Inspection Panel */}
                 <AnimatePresence>
                     {selectedSapling && (
-                        <SaplingPanel sapling={selectedSapling} onClose={() => setSelectedSapling(null)} />
+                        <SaplingPanel key={selectedSapling.id} sapling={selectedSapling} onClose={() => setSelectedSapling(null)} />
                     )}
                 </AnimatePresence>
             </div>

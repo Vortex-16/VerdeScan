@@ -51,6 +51,7 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/api/uploads", StaticFiles(directory=os.path.join(DATA_DIR, "uploads")), name="uploads")
 
 @app.on_event("startup")
 async def startup_event():
@@ -248,6 +249,17 @@ async def get_patches():
             
     except Exception as e:
         logger.error(f"Error getting patches: {e}")
+        return []
+
+@app.get("/api/patches/all")
+async def get_all_patches_data():
+    """Get detailed data for ALL patches."""
+    try:
+        # Use DataManager directly which handles caching
+        data = await task_manager.data_manager.get_all_results()
+        return data
+    except Exception as e:
+        logger.error(f"Error getting all patches data: {e}")
         return []
 
 @app.get("/api/patch/{patch_id}")

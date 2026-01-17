@@ -19,6 +19,8 @@ class DataManager:
         """Initialize data manager."""
         self.results_file = os.path.join(settings.data_dir, settings.results_file)
         self.ensure_data_directory()
+        self._cache = None
+        self._cache_mtime = 0
     
     def ensure_data_directory(self):
         """Ensure all required data directories exist."""
@@ -55,6 +57,10 @@ class DataManager:
             # Save updated results
             async with aiofiles.open(self.results_file, 'w') as f:
                 await f.write(json.dumps(existing_data, indent=2, default=str))
+            
+            # Invalidate cache after writing
+            self._cache = None
+            self._cache_mtime = 0
             
             # Save CSV export
             await self._save_csv_export(result)
@@ -150,15 +156,38 @@ class DataManager:
         except Exception as e:
             logger.error(f"Error calculating global statistics: {e}")
             return {"error": str(e)}
+
+    async def get_all_results(self) -> List[Dict[str, Any]]:
+        """
+        Get all processing results.
+        
+        Returns:
+            List of all processing results
+        """
+        try:
+            data = await self._load_results_data()
+            return list(data.values())
+        except Exception as e:
+            logger.error(f"Error getting all results: {e}")
+            return []
     
     async def _load_results_data(self) -> Dict[str, Any]:
-        """Load existing results data from file."""
+        """Load existing results data from file with caching."""
         try:
-            if os.path.exists(self.results_file):
-                async with aiofiles.open(self.results_file, 'r') as f:
-                    content = await f.read()
-                    return json.loads(content)
-            return {}
+            if not os.path.exists(self.results_file):
+                return {}
+                
+            current_mtime = os.path.getmtime(self.results_file)
+            
+            # Return cached data if file hasn't changed
+            if self._cache is not None and current_mtime <= self._cache_mtime:
+                return self._cache
+                
+            async with aiofiles.open(self.results_file, 'r') as f:
+                content = await f.read()
+                self._cache = json.loads(content)
+                self._cache_mtime = current_mtime
+                return self._cache
         except Exception as e:
             logger.warning(f"Error loading results data: {e}")
             return {}

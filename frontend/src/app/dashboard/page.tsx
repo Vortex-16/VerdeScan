@@ -42,6 +42,7 @@ import { api, GlobalStats } from '@/lib/api';
 // Interface for patch alerts
 interface PatchAlert {
     id: string;
+    displayId?: string;
     location: string;
     survival: number;
     status: 'critical' | 'warning' | 'healthy';
@@ -325,7 +326,7 @@ function AlertPatchesTable({ patches }: { patches: PatchAlert[] }) {
                                                 ) : (
                                                     <CheckCircle2 className="w-4 h-4 text-alive" />
                                                 )}
-                                                <span className="font-medium">{patch.id}</span>
+                                                <span className="font-medium">{patch.displayId || patch.id}</span>
                                             </div>
                                         </td>
                                         <td className="py-3 px-2 text-muted-foreground">{patch.location}</td>
@@ -577,34 +578,36 @@ export default function DashboardPage() {
                 const data = await api.getGlobalStats();
                 setStats(data);
 
-                // Fetch patches
-                const patchNames = await api.getPatches();
-                const patchDetails = await Promise.all(
-                    patchNames.slice(0, 5).map(async (name) => {
-                        const details = await api.getPatchDetails(name);
-                        if (!details) return null;
+                // Fetch all patches efficiently
+                const allDetails = await api.getAllPatchDetails();
 
-                        const total = details.summary.total_trees;
-                        const validTotal = total > 0 ? total : 1;
-                        const survival = (details.summary.alive_trees / validTotal) * 100;
+                // Process only top 5 for dashboard
+                const patchDetails = allDetails.slice(0, 5).map((details) => {
+                    if (!details) return null;
 
-                        let status: 'critical' | 'warning' | 'healthy' = 'healthy';
-                        if (survival < 50) status = 'critical';
-                        else if (survival < 75) status = 'warning';
+                    const total = details.summary.total_trees;
+                    const validTotal = total > 0 ? total : 1;
+                    const survival = (details.summary.alive_trees / validTotal) * 100;
 
-                        const date = details.metadata?.timestamp
-                            ? new Date(details.metadata.timestamp).toLocaleDateString()
-                            : 'Just now';
+                    let status: 'critical' | 'warning' | 'healthy' = 'healthy';
+                    if (survival < 50) status = 'critical';
+                    else if (survival < 75) status = 'warning';
 
-                        return {
-                            id: name.length > 15 ? name.substring(0, 15) + '...' : name,
-                            location: `Sector ${name.charAt(0).toUpperCase() + name.slice(1, 3)}`, // Pseudonymize location
-                            survival: parseFloat(survival.toFixed(1)),
-                            status,
-                            lastSurvey: date
-                        };
-                    })
-                );
+                    const date = details.metadata?.timestamp
+                        ? new Date(details.metadata.timestamp).toLocaleDateString()
+                        : 'Just now';
+
+                    const name = details.patch_id;
+
+                    return {
+                        id: name,
+                        displayId: name.length > 15 ? name.substring(0, 15) + '...' : name,
+                        location: `Sector ${name.charAt(0).toUpperCase() + name.slice(1, 3)}`,
+                        survival: parseFloat(survival.toFixed(1)),
+                        status,
+                        lastSurvey: date
+                    };
+                });
                 setPatches(patchDetails.filter(Boolean) as PatchAlert[]);
 
             } catch (error) {

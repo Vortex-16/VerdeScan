@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     
     # ML Model Configuration
     ml_model_path: str = Field(default="models", env="ML_MODEL_PATH")
-    detection_confidence_threshold: float = Field(default=0.5, env="DETECTION_CONFIDENCE_THRESHOLD")
+    detection_confidence_threshold: float = Field(default=0.2, env="DETECTION_CONFIDENCE_THRESHOLD")
     classification_confidence_threshold: float = Field(default=0.7, env="CLASSIFICATION_CONFIDENCE_THRESHOLD")
     
     # External API Configuration

@@ -81,12 +81,15 @@ class ForestMLProcessor(MLProcessor):
         """
         Uses Sliding Window with Trained CNN to find Saplings (Class 1).
         """
-        if not self.model_loaded:
-            logger.info("Using Fallback OpenCV Detection")
-            # Fallback to older OpenCV logic if model missing
+        # Force Geometric Detection (OpenCV) as it performs better for circular pits
+        # if not self.model_loaded:
+        if True: 
+            logger.info("Using Geometric Detection (Circles/Pits)")
+            # Fallback to older OpenCV logic if model missing or forced
             points = self.monitor.detect_features(image, "OP3", datetime.now().year)
             detections = []
             for i, pt in enumerate(points):
+                # Radius approx 20px
                 bbox = BoundingBox(pt.pixel_x - 20, pt.pixel_y - 20, 40, 40)
                 detections.append(TreeDetection(i, bbox, pt.confidence, (pt.pixel_x, pt.pixel_y)))
             return detections
@@ -136,7 +139,7 @@ class ForestMLProcessor(MLProcessor):
         for i, pred in enumerate(preds):
             if pred.item() == 1: # Class 1 = Sapling
                 confidence = probs[i][1].item()
-                if confidence > 0.5:
+                if confidence > settings.detection_confidence_threshold:
                     x, y = coords[i]
                     # Center of the tile
                     cx, cy = x + 112, y + 112

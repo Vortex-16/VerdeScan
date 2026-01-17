@@ -199,11 +199,12 @@ class TaskManager:
             )
             
             # Clean up uploaded file
-            try:
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-            except Exception as e:
-                logger.warning(f"Failed to clean up uploaded file {image_path}: {e}")
+            # Clean up uploaded file (Disabled to allow frontend visualization)
+            # try:
+            #     if os.path.exists(image_path):
+            #         os.remove(image_path)
+            # except Exception as e:
+            #     logger.warning(f"Failed to clean up uploaded file {image_path}: {e}")
             
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {e}")
