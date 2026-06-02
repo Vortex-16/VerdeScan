@@ -2,23 +2,88 @@
 
 Proof-of-concept for the Odisha Forest Department's drone-based afforestation monitoring program.
 
-**Problem:** 5 crore saplings planted annually across Odisha. Are they surviving? Manual survival walks are slow, expensive, and imprecise. The department needs to know *exactly* which GPS locations have casualties.
+**Problem:** 5 crore saplings are planted annually across Odisha. Are they surviving? Manual survival walks are slow, expensive, and cover only ~5% of patches. The department needs to know *exactly* which GPS locations have casualties.
 
-**Solution:** VerdeScan analyses orthomosaic drone imagery to produce a GeoJSON file of every dead sapling's GPS coordinates — directly verifiable against field ground truth.
+**Solution:** VerdeScan analyses orthomosaic drone imagery to produce GPS-precise alive/dead maps for every planted pit — viewable in a live satellite map dashboard and exportable as GeoJSON for field verification.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph DATA["Data Sources"]
+        OP1["OP1 Orthomosaic\n(Post-Pitting)"]
+        OP3["OP3 Orthomosaic\n(Post-SW / Survival Walk)"]
+        UPLOAD["Single Drone Image\n(ad-hoc upload)"]
+    end
+
+    subgraph PIPELINE["AI Model — ortho_pipeline.py"]
+        PIT["Pit Detection\nHough circles + darkness filter\n+ 2.5m grid dedup"]
+        GPS["GPS Extraction\nGeoTIFF CRS → WGS84\n~8,000 anchor points"]
+        CROP["Pit Crop per GPS\nProject OP1 pit → OP3 pixel\n2m × 2m patch"]
+        CNN1["ResNet18 CNN\n3-class: alive / dead / no_sapling\n99.9% val accuracy"]
+        GEOJSON["GeoJSON Output\nalive_locations + casualties\nper-pit lat/lon + confidence"]
+    end
+
+    subgraph UPLOAD_PIPELINE["AI Model — forest_processor.py"]
+        SLIDE["Sliding Window\n224×224 tiles, stride=224"]
+        CNN2["ResNet18 CNN\nsame model weights"]
+        NMS["Connected-component NMS\nmerge adjacent positive tiles"]
+        RESULT["ProcessingResult\nalive/dead counts + bboxes"]
+    end
+
+    subgraph BACKEND["FastAPI Backend — api/main.py"]
+        STATS["/api/stats\nmerged ortho + upload counts"]
+        SITERESULT["/api/site-result/{site}\nalive_locations + casualties"]
+        SURVEYS["/api/site-surveys/{site}\ncamera GPS survey points"]
+        TASKAPI["/api/upload-image\n/api/task-status/{task_id}"]
+        HEALTH["/health"]
+    end
+
+    subgraph FRONTEND["Next.js Frontend — localhost:3000"]
+        DASH["Dashboard\nKPI cards · upload form\northo field analysis"]
+        MAP["Field Map\nLeaflet satellite map\ngreen/red/purple pins"]
+        EXPLORER["Patch Explorer\nimage viewer + bbox overlay"]
+        REPORTS["Reports\nCSV export"]
+    end
+
+    OP1 --> PIT --> GPS
+    OP3 --> CROP
+    GPS --> CROP --> CNN1 --> GEOJSON
+    GEOJSON --> SITERESULT
+    GEOJSON --> STATS
+
+    UPLOAD --> SLIDE --> CNN2 --> NMS --> RESULT
+    RESULT --> TASKAPI
+    RESULT --> STATS
+
+    STATS --> DASH
+    SITERESULT --> MAP
+    SITERESULT --> DASH
+    SURVEYS --> MAP
+    TASKAPI --> DASH
+    TASKAPI --> EXPLORER
+    SURVEYS --> MAP
+```
 
 ---
 
 ## How It Works
 
 ```
-OP1 orthomosaic  →  Detect all planting pits  →  GPS coordinates for ~8,000 pits
-                                                            |
+OP1 orthomosaic  →  Detect all planting pits  →  GPS coordinates (~8,000 pits)
+                                                          │
 OP3 orthomosaic  →  Classify each pit location  →  alive / dead / no_sapling
-                                                            |
-                                              Casualties GeoJSON (lat/lon per dead sapling)
+                                                          │
+                                            Casualties GeoJSON (lat/lon per dead sapling)
+                                            + alive_locations GeoJSON
+                                                          │
+                                            Field Map — satellite view with
+                                            green (alive) and red (dead) pins
 ```
 
-This architecture matches the problem statement recommendation: *"use coordinate information from OP1 images, as pits can easily be identified. Match with OP3 to check sapling survival."*
+This matches the problem statement: *"use coordinate information from OP1 images, as pits can easily be identified. Match with OP3 to check sapling survival."*
 
 ---
 
@@ -32,37 +97,40 @@ This architecture matches the problem statement recommendation: *"use coordinate
 | Computer Vision | OpenCV — Hough circles, CLAHE, darkness validation |
 | Georeferencing | rasterio + pyproj — GeoTIFF CRS → WGS84 lat/lon |
 | Async Processing | asyncio task queue with GPU batched inference |
+| EXIF GPS | Pillow — extracts camera GPS from uploaded drone images |
 
 ### Frontend
 | Component | Technology |
 |-----------|------------|
-| Framework | Next.js 14 + TypeScript |
-| Styling | Tailwind CSS |
+| Framework | Next.js 16 + TypeScript |
+| Styling | Tailwind CSS v4 |
+| Maps | React-Leaflet + Leaflet — satellite tiles (ESRI World Imagery) |
 | Animations | Framer Motion + GSAP |
 
 ### ML Model (V2)
-- **Architecture:** ResNet18 + ImageNet pretrained weights + custom 3-class head
-- **Training data:** 15,000 tiles from all survey stages (Pre-Pitting, Post-Pitting, Post-Planting, Post-SW)
-- **Validation accuracy:** 99.9% on held-out source images
-- **Classes:** `alive` (live sapling) / `dead` (died sapling) / `no_sapling` (bare ground)
+- **Architecture:** ResNet18 + ImageNet pretrained weights + custom 3-class head (Dropout 0.3 + Linear 512→3)
+- **Training data:** 3,253 source-level split tiles (pit / sapling — 2-class detector retrained as 3-class)
+- **Validation accuracy:** 100% on held-out source images (early stopped ep 8/15)
+- **Classes:** `alive` · `dead` · `no_sapling`
+- **Inference:** AMP (FP16) on GPU, batch=128, ~41ms per image
 
 ---
 
 ## Running the System
 
 ### Prerequisites
-- Python 3.10+ with CUDA-capable GPU (recommended)
+- Python 3.10+ with CUDA-capable GPU (recommended; CPU fallback works)
 - Node.js 18+
 
-### Backend
+### 1. Backend
 ```bash
 cd "AI Model"
 pip install -r requirements.txt
 python run_server.py
 ```
-API available at http://localhost:8000 | Docs at http://localhost:8000/docs
+API at http://localhost:8000 · Docs at http://localhost:8000/docs
 
-### Frontend
+### 2. Frontend
 ```bash
 cd frontend
 npm install
@@ -70,18 +138,22 @@ npm run dev
 ```
 Dashboard at http://localhost:3000
 
-### Full Orthomosaic Pipeline (primary analysis)
+### 3. Full Orthomosaic Pipeline (primary analysis)
 ```bash
 cd "AI Model"
 python ortho_pipeline.py --site benkmura
 python ortho_pipeline.py --site debadihi
 ```
-Outputs: `results/{site}/{site}_casualties.geojson` — load in Google Earth or QGIS to verify against ground truth.
+Outputs in `AI Model/results/{site}/`:
+- `{site}_all_detections.geojson` — every pit with alive/dead status + lat/lon
+- `{site}_casualties.geojson` — dead pits only
 
-### (Re)train the model
+Load in Google Earth or QGIS to verify against ground truth.
+
+### 4. (Re)train the model
 ```bash
 cd "AI Model"
-python build_dataset_v2.py           # builds 15k-tile dataset from raw imagery
+python build_dataset_v2.py           # build 15k-tile dataset from raw imagery
 python train_improved.py --dataset processed_dataset_v2
 cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
 ```
@@ -92,12 +164,25 @@ cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/analyze-site?site=benkmura` | POST | Run full orthomosaic pipeline (background) |
-| `/api/site-result/{site}` | GET | Survival stats + full casualty GPS list |
-| `/api/upload-image` | POST | Upload single image for quick analysis |
+| `/api/analyze-site?site=benkmura` | POST | Run full orthomosaic pipeline (background, ~7 min) |
+| `/api/site-result/{site}` | GET | Survival stats + alive_locations + casualties GPS list |
+| `/api/site-surveys/{site}` | GET | Camera GPS survey points from uploaded images |
+| `/api/upload-image` | POST | Upload single drone image for quick AI analysis |
 | `/api/task-status/{task_id}` | GET | Poll processing progress |
-| `/api/stats` | GET | Global statistics |
-| `/health` | GET | System health |
+| `/api/stats` | GET | Global statistics (merges ortho + upload results) |
+| `/health` | GET | System health + model info |
+
+---
+
+## Dashboard Features
+
+| Page | Description |
+|------|-------------|
+| **Dashboard** | KPI cards (trees / alive / dead / survival rate), upload form with site linking, ortho field analysis card |
+| **Field Map** | Full-screen Leaflet satellite map — green pins (alive), red pins (dead), purple pins (survey image camera GPS). Layer toggles. GeoJSON download. |
+| **Patch Explorer** | Per-patch drone image viewer with bounding-box overlays for each detected tree |
+| **Temporal View** | Side-by-side OP1/OP3 comparison slider |
+| **Reports** | CSV export per patch |
 
 ---
 
@@ -106,12 +191,13 @@ cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
 ```
 VerdeScan/
 ├── AI Model/
-│   ├── api/main.py              — FastAPI server + all endpoints
+│   ├── api/
+│   │   └── main.py              — FastAPI server, all endpoints, EXIF GPS extraction
 │   ├── core/
-│   │   ├── forest_processor.py  — CNN inference (auto-detects V1/V2 model)
-│   │   ├── task_manager.py      — Async processing queue
+│   │   ├── forest_processor.py  — CNN inference (auto-detects V1 SimpleCNN / V2 ResNet18)
+│   │   ├── task_manager.py      — Async GPU processing queue
 │   │   ├── data_manager.py      — JSON persistence + CSV export
-│   │   └── health_classifier.py — HSV fallback classifier
+│   │   └── health_classifier.py — HSV fallback health classifier
 │   ├── models/
 │   │   ├── data_structures.py   — Dataclasses (TreeResult, ProcessingResult…)
 │   │   └── ml_processor.py      — Abstract base + Gemini integration
@@ -119,34 +205,52 @@ VerdeScan/
 │   │   └── forest_model.pth     — Active model (ResNet18, 3-class, 99.9% val acc)
 │   ├── ortho_pipeline.py        — Orthomosaic pit-detection + survival pipeline
 │   ├── build_dataset_v2.py      — Dataset builder from raw drone imagery
-│   ├── train_improved.py        — Model training script
-│   ├── tests/test_pipeline.py   — Test suite (6 tests, all passing)
+│   ├── train_improved.py        — ResNet18 training script (AMP, early stopping)
 │   ├── config.py                — Pydantic settings
-│   └── requirements.txt
-├── frontend/                    — Next.js dashboard
+│   ├── requirements.txt
+│   └── results/                 — Generated at runtime, not committed
+│       ├── benkmura/
+│       └── debadihi/
+├── frontend/
 │   └── src/
-│       ├── app/dashboard/       — Dashboard pages
-│       ├── components/          — Shared UI components
-│       ├── hooks/useCounter.ts  — Animated counter
-│       └── lib/api.ts           — API client
+│       ├── app/
+│       │   ├── dashboard/
+│       │   │   ├── page.tsx         — Main dashboard + upload form
+│       │   │   ├── map/page.tsx     — Field Map (Leaflet satellite map)
+│       │   │   ├── explorer/page.tsx — Patch Explorer
+│       │   │   ├── temporal/page.tsx — Temporal comparison
+│       │   │   ├── analytics/page.tsx
+│       │   │   └── reports/page.tsx
+│       │   └── page.tsx             — Landing page
+│       ├── components/
+│       │   ├── FieldLeafletMap.tsx  — Leaflet map with alive/dead/survey markers
+│       │   └── DashboardSidebar.tsx — Shared navigation sidebar
+│       ├── hooks/useCounter.ts      — Animated KPI counter
+│       └── lib/api.ts               — Typed API client
 ├── Data/                        — Raw drone imagery (not committed)
-├── render.yaml                  — Render.com deployment config
 └── README.md
 ```
 
 ---
 
-## Results (Benkmura VF)
+## Results
 
+### Benkmura VF (8,000 saplings planted)
 | Metric | Value |
 |--------|-------|
-| Pits detected on OP1 mosaic | 3,900 |
-| In-field detections on OP3 | 2,921 |
+| Pits detected (OP1) | 3,900 |
+| In-field on OP3 | 2,921 |
 | Alive | 881 (30.2%) |
 | Dead / Casualties | 2,040 (69.8%) |
-| Inference time (GPU batch=256) | 6 seconds |
-| Total pipeline time | ~7 minutes |
-| Output | `results/benkmura/benkmura_casualties.geojson` |
+| GPU inference (batch=256) | ~6 seconds |
+| Full pipeline time | ~7 minutes |
+
+### Debadihi VF (10,000 saplings planted)
+| Metric | Value |
+|--------|-------|
+| In-field detections | 1,768 |
+| Alive | 10 (0.6%) |
+| Dead / Casualties | 1,758 (99.4%) |
 
 ---
 
@@ -163,4 +267,4 @@ python "AI Model/run_server.py"
 cd frontend && npm install && npm run build && npm start
 ```
 
-Set `NEXT_PUBLIC_API_URL` env var to your deployed backend URL.
+Set `NEXT_PUBLIC_API_URL` to your deployed backend URL.
