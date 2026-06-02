@@ -1,311 +1,173 @@
-# 🌲 Verde Scan - Drone Forest Monitoring System
+# VerdeScan — Drone-Based Afforestation Monitoring
 
-A production-ready AI-powered system for monitoring forest health using drone imagery. Built for the Build with Gemini Hackathon.
+AI-powered system for monitoring sapling survival in afforestation programs using drone orthomosaic imagery. Built for the Odisha Forest Department problem statement.
 
-## 🚀 Features
+## Problem Statement
 
-- **Advanced ML Pipeline**: Computer vision + optional Gemini AI integration
-- **Real-time Processing**: Asynchronous task processing with progress tracking
-- **Production Ready**: Docker containerization, health monitoring, logging
-- **Interactive Dashboard**: Web-based visualization with maps and statistics
-- **Comprehensive API**: RESTful endpoints for all functionality
-- **Scalable Architecture**: Handles concurrent requests with queue management
+The Odisha Forest Department plants ~5 crore trees annually. After planting (OP2) and weeding (OP3), a survival walk is conducted. The question: **can drone imagery pinpoint exactly which saplings have died?**
 
-## 🏗️ Architecture
+The judging criteria: match the 25–30 exact GPS locations of dead saplings known on the ground.
+
+---
+
+## How It Works
 
 ```
-├── 🤖 ML Processing Pipeline
-│   ├── Tree Detection (OpenCV)
-│   ├── Health Classification (CV + Gemini)
-│   └── Proof Image Generation
-├── 🌐 FastAPI Backend
-│   ├── Async Task Management
-│   ├── File Upload & Processing
-│   └── Data Persistence
-├── 📊 Web Dashboard
-│   ├── Interactive Maps
-│   ├── Real-time Statistics
-│   └── Proof Image Gallery
-└── 🐳 Production Deployment
-    ├── Docker Containerization
-    ├── Nginx Load Balancing
-    └── Health Monitoring
+OP1 Orthomosaic (Post-Pitting)
+        |
+  Detect all planting pits (Hough circles + darkness filter + 2.5m grid dedup)
+        |
+  Extract GPS lat/lon for every pit  (GeoTIFF CRS → WGS84)
+        |  [~8,000 GPS anchor points]
+        |
+OP3 Orthomosaic (Post-SW / Survival Walk)
+        |
+  For each pit GPS → project to OP3 pixel → crop 2m × 2m patch
+        |
+  ResNet18 CNN (3-class: alive / dead / no_sapling)
+        |
+  Output: survival % + GeoJSON of every dead sapling with GPS coordinates
 ```
 
-## 🛠️ Quick Start
+---
 
-### Option 1: Direct Python Setup
+## Quick Start
 
-1. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Configure Environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings (optional Gemini API key)
-   ```
-
-3. **Test System**
-   ```bash
-   python test_system.py
-   ```
-
-4. **Generate Sample Data**
-   ```bash
-   python ai/processor.py
-   ```
-
-5. **Start Server**
-   ```bash
-   python run_server.py
-   ```
-
-6. **Access Dashboard**
-   - Open http://localhost:8000
-   - View API docs at http://localhost:8000/docs
-
-### Option 2: Docker Setup (Recommended)
-
-1. **Development Mode**
-   ```bash
-   docker-compose --profile development up
-   ```
-
-2. **Production Mode**
-   ```bash
-   docker-compose --profile production up
-   ```
-
-3. **Access Application**
-   - Dashboard: http://localhost:8000
-   - API Documentation: http://localhost:8000/docs
-   - Health Check: http://localhost:8000/health
-
-## 📡 API Endpoints
-
-### Core Processing
-- `POST /api/upload-image` - Upload drone image for processing
-- `GET /api/task-status/{task_id}` - Check processing status
-- `POST /api/process-batch` - Batch process multiple images
-
-### Data Retrieval
-- `GET /api/patches` - List all processed patches
-- `GET /api/patch/{patch_id}` - Get patch details
-- `GET /api/stats` - Global statistics
-- `GET /api/export/{patch_id}` - Download CSV export
-
-### System Management
-- `GET /health` - System health check
-- `GET /api/queue-status` - Processing queue status
-- `DELETE /api/task/{task_id}` - Cancel task
-
-## 🧪 Testing
-
-### Run System Tests
+### 1. Install dependencies
 ```bash
-python test_system.py
+pip install -r requirements.txt
 ```
 
-### Run Unit Tests (when implemented)
+### 2. Build the training dataset
+Requires the raw drone imagery in `../Data/Image/`:
 ```bash
-pytest tests/
+python build_dataset_v2.py
+# Outputs: processed_dataset_v2/{alive,dead,no_sapling}/ — 15,000 tiles
 ```
 
-### Test API Endpoints
+### 3. Train the model
 ```bash
-# Upload test image
-curl -X POST "http://localhost:8000/api/upload-image" \
-  -F "file=@test_image.jpg" \
-  -F "patch_name=test_patch"
-
-# Check health
-curl http://localhost:8000/health
+python train_improved.py --dataset processed_dataset_v2
+# Val accuracy: 99.9%  |  3 classes: alive / dead / no_sapling
+# Saves: ml_models/forest_model_improved.pth
 ```
 
-## 🔧 Configuration
+Deploy the trained model:
+```bash
+cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
+```
 
-### Environment Variables
+### 4. Run the orthomosaic survival pipeline
+```bash
+python ortho_pipeline.py --site benkmura
+python ortho_pipeline.py --site debadihi
+```
+
+Outputs (in `results/{site}/`):
+- `{site}_casualties.geojson` — GPS coordinates of every dead sapling
+- `{site}_all_detections.geojson` — full results with alive/dead/no_sapling
+
+### 5. Start the API server
+```bash
+python run_server.py
+```
+
+Then start the Next.js frontend:
+```bash
+cd ../frontend && npm run dev
+```
+
+Dashboard: http://localhost:3000 | API docs: http://localhost:8000/docs
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/upload-image` | POST | Upload single drone image for processing |
+| `/api/process-batch` | POST | Batch upload up to 10 images |
+| `/api/task-status/{task_id}` | GET | Poll processing progress |
+| `/api/analyze-site?site=benkmura` | POST | Run full orthomosaic pipeline |
+| `/api/site-result/{site}` | GET | Survival stats + casualty GPS list |
+| `/api/patches/all` | GET | All processed patch results |
+| `/api/patch/{patch_id}` | GET | Single patch detail |
+| `/api/stats` | GET | Global statistics |
+| `/api/export/{patch_id}` | GET | Download CSV |
+| `/health` | GET | System health check |
+
+---
+
+## ML Model
+
+| | V1 (old) | V2 (current) |
+|--|---------|-------------|
+| Architecture | SimpleCNN (4 layers) | ResNet18 (pretrained ImageNet) |
+| Classes | 2 (pit / sapling) | 3 (alive / dead / no_sapling) |
+| Training data | 4,028 tiles, 2 dates | 15,000 tiles, all survey stages |
+| What it learned | "June vs August" (date bias) | Visual alive/dead/empty distinction |
+| Val accuracy | 100% (trivial task) | 99.9% (real 3-class task) |
+| Health classifier | Separate HSV rules | Built into CNN |
+
+---
+
+## Project Structure
+
+```
+AI Model/
+├── api/main.py             — FastAPI server + all endpoints
+├── core/
+│   ├── forest_processor.py — CNN inference engine (V1/V2 auto-detect)
+│   ├── health_classifier.py — HSV fallback health classifier
+│   ├── task_manager.py     — Async task queue
+│   ├── data_manager.py     — JSON persistence + CSV export
+│   └── cv_processor.py     — Image metadata extraction
+├── models/
+│   ├── data_structures.py  — All dataclasses (TreeResult, ProcessingResult…)
+│   └── ml_processor.py     — Abstract base + Gemini integration
+├── ml_models/
+│   └── forest_model.pth    — Active model (ResNet18, 3-class)
+├── ortho_pipeline.py       — Full orthomosaic survival analysis pipeline
+├── build_dataset_v2.py     — Dataset builder from raw drone imagery
+├── train_improved.py       — Model training script
+├── tests/test_pipeline.py  — Pipeline test suite (6 tests)
+├── config.py               — Pydantic settings
+├── logger.py               — Structured logging
+└── requirements.txt        — Python dependencies
+```
+
+---
+
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_HOST` | 0.0.0.0 | Server host |
 | `API_PORT` | 8000 | Server port |
-| `ENVIRONMENT` | development | Environment mode |
-| `MAX_CONCURRENT_REQUESTS` | 5 | Max concurrent processing |
-| `PROCESSING_TIMEOUT` | 30 | Processing timeout (seconds) |
-| `MAX_FILE_SIZE` | 10485760 | Max upload size (10MB) |
-| `GEMINI_API_KEY` | None | Google Gemini API key (optional) |
-| `LOG_LEVEL` | INFO | Logging level |
+| `MAX_CONCURRENT_REQUESTS` | 5 | Concurrent image processing |
+| `MAX_FILE_SIZE` | 10485760 | Upload limit (10 MB) |
+| `DETECTION_CONFIDENCE_THRESHOLD` | 0.2 | CNN detection minimum confidence |
+| `GEMINI_API_KEY` | None | Optional Gemini Vision enhancement |
+| `LOG_LEVEL` | INFO | Logging verbosity |
 
-### ML Model Configuration
-
-- **Detection Threshold**: 0.5 (adjustable)
-- **Classification Threshold**: 0.7 (adjustable)
-- **Supported Formats**: JPEG, PNG, TIFF
-- **Max Image Size**: 10MB
-- **Processing Timeout**: 30 seconds
-
-## 📊 Data Flow
-
-1. **Image Upload** → Validation → Queue
-2. **ML Processing** → Tree Detection → Health Classification
-3. **Result Storage** → JSON + CSV Export
-4. **Proof Generation** → Crop dead/diseased trees
-5. **Dashboard Update** → Real-time statistics
-
-## 🔍 Monitoring
-
-### Health Checks
-- System status: `/health`
-- Queue status: `/api/queue-status`
-- Processing metrics in logs
-
-### Logging
-- Structured logging with timestamps
-- Configurable log levels
-- File and console output
-- Error tracking and debugging
-
-### Prodcution Setup
-1. **Cloud Deployment**
-   - **AWS EC2**: Launch Ubuntu 20.04 (t3.medium+), open ports 8000/80/443.
-   - **GCP**: Create Compute Engine (n1-standard-2), allow HTTP/HTTPS.
-   - **DigitalOcean**: Create Ubuntu 20.04 Droplet.
-   *After launching, SSH in and follow the [Docker Production Setup](#docker-production-setup).*
-
-2. **Docker Production Setup**
-```bash
-# Build and start production services
-docker-compose --profile production up -d
-
-# View logs
-docker-compose logs -f
-
-# Scale processing (if needed)
-docker-compose up --scale verde-scan-prod=2
-```
-
-### Performance Tuning
-- Adjust `MAX_CONCURRENT_REQUESTS` based on hardware
-- Configure Nginx for load balancing
-- Monitor memory usage for large images
-- Set up log rotation
-
-## 🤖 ML Pipeline Details
-
-### Tree Detection
-- **Method**: OpenCV contour detection
-- **Features**: Shape analysis, area filtering
-- **Accuracy**: ~85% on test data
-- **Speed**: <5 seconds per image
-
-### Health Classification
-- **Primary**: Color-based analysis (HSV)
-- **Enhanced**: Gemini Vision API (optional)
-- **Categories**: Alive, Dead, Diseased
-- **Confidence**: 0.0-1.0 scoring
-
-### Proof Images
-- Automatic cropping of dead/diseased trees
-- Organized by patch and timestamp
-- Served via static file endpoints
-
-## 📁 Project Structure
-
-```
-├── api/                 # FastAPI application
-├── core/               # Core processing modules
-├── models/             # Data structures and ML interfaces
-├── tests/              # Test suite
-├── static/             # Static files and proof images
-├── data/               # Processing results and exports
-├── frontend/           # Web dashboard
-├── docker-compose.yml  # Container orchestration
-├── Dockerfile         # Container definition
-└── requirements.txt   # Python dependencies
-```
-
-## 🔒 Security
-
-- Input validation for all uploads
-- File size and format restrictions
-- CORS configuration
-- Rate limiting (via Nginx)
-- Non-root container execution
-- Environment variable secrets
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Import Errors**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Permission Errors**
-   ```bash
-   chmod +x run_server.py test_system.py
-   ```
-
-3. **Port Already in Use**
-   ```bash
-   # Change port in .env or docker-compose.yml
-   API_PORT=8001
-   ```
-
-4. **Memory Issues**
-   ```bash
-   # Reduce concurrent requests
-   MAX_CONCURRENT_REQUESTS=2
-   ```
-
-### Debug Mode
-```bash
-# Enable debug logging
-LOG_LEVEL=DEBUG python run_server.py
-```
-
-## 📈 Performance Metrics
-
-- **Processing Speed**: ~5-10 seconds per image
-- **Concurrent Requests**: Up to 5 simultaneous
-- **Memory Usage**: ~500MB base + 100MB per concurrent task
-- **Accuracy**: 85%+ tree detection, 80%+ health classification
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit pull request
-
-## 📄 License
-
-This project is built for the Build with Gemini Hackathon. See hackathon terms for usage rights.
-
-## 🎯 Hackathon Integration
-
-### Dataset Integration
-- **Manual Data Setup**: Place your downloaded drone data in `c:\Code\VerdeScan\Data\Image`. The system will automatically detect and use these files for training and processing.
-- Supports provided drone imagery datasets
-- Handles various image formats and sizes
-- GPS metadata extraction from EXIF data
-
-### Gemini API Integration
-- Optional enhanced analysis with Gemini Vision
-- Fallback to computer vision if API unavailable
-- Configurable via environment variables
-
-### Production Readiness
-- Docker containerization for easy deployment
-- Health monitoring and logging
-- Scalable architecture for demo scaling
-- Comprehensive API documentation
+Copy `.env.example` to `.env` and set values as needed.
 
 ---
 
-**Built with ❤️ for forest conservation and the Build with Gemini Hackathon**# verde_scan
+## Running Tests
+
+```bash
+pytest tests/test_pipeline.py -v
+# 6 passed
+```
+
+---
+
+## Performance
+
+| Operation | Time |
+|-----------|------|
+| Single image upload + classification | ~1–3s (GPU) |
+| Orthomosaic pit detection (27k×23k px) | ~6 min |
+| Survival check (3,900 pits, GPU batch) | ~6s |
+| Full Benkmura pipeline end-to-end | ~7 min |

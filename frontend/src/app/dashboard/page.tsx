@@ -21,12 +21,13 @@ import {
     Menu,
     ArrowUpRight,
     FileText,
+    RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { api, GlobalStats } from '@/lib/api';
+import { api, GlobalStats, SiteResult } from '@/lib/api';
 import { useCounter } from '@/hooks/useCounter';
 import DashboardSidebar from '@/components/DashboardSidebar';
 
@@ -38,6 +39,123 @@ interface PatchAlert {
     survival: number;
     status: 'critical' | 'warning' | 'healthy';
     lastSurvey: string;
+}
+
+// ─── Field Analysis Card ───────────────────────────────────────────────────
+function FieldAnalysisCard() {
+    const [site, setSite] = useState<'benkmura' | 'debadihi'>('benkmura');
+    const [result, setResult] = useState<SiteResult | null>(null);
+    const [running, setRunning] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        api.getSiteResult(site).then(r => r && setResult(r));
+    }, [site]);
+
+    const handleAnalyze = async () => {
+        setRunning(true);
+        setError('');
+        const r = await api.analyzeSite(site);
+        if (r.status === 'error') { setError(r.message); setRunning(false); return; }
+
+        // Poll until complete
+        const deadline = Date.now() + 1800_000;
+        const poll = async () => {
+            const res = await api.getSiteResult(site);
+            if (!res) return;
+            setResult(res);
+            if (res.status === 'complete') { setRunning(false); return; }
+            if (Date.now() < deadline) setTimeout(poll, 5000);
+            else { setRunning(false); setError('Timed out — check server logs'); }
+        };
+        setTimeout(poll, 3000);
+    };
+
+    const downloadGeoJSON = async () => {
+        const res = await fetch(`http://127.0.0.1:8000/api/site-result/${site}`);
+        const data = await res.json();
+        const features = (data.casualties || []).map((c: {lat:number;lon:number;conf:number}) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+            properties: { status: 'dead', confidence: c.conf },
+        }));
+        const geojson = { type: 'FeatureCollection', features };
+        const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = `${site}_casualties.geojson`;
+        a.click(); URL.revokeObjectURL(url);
+    };
+
+    return (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.6 }}>
+            <Card className="glass-card">
+                <CardHeader className="pb-4">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                        <Map className="w-4 h-4 text-forest" />
+                        Orthomosaic Field Analysis
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                        <select
+                            value={site}
+                            onChange={e => setSite(e.target.value as 'benkmura' | 'debadihi')}
+                            className="h-10 px-3 bg-muted/50 rounded-lg border-0 text-sm font-medium focus:outline-none"
+                        >
+                            <option value="benkmura">Benkmura VF (8,000 saplings)</option>
+                            <option value="debadihi">Debadihi VF (10,000 saplings)</option>
+                        </select>
+                        <Button
+                            onClick={handleAnalyze}
+                            disabled={running}
+                            className="gradient-forest text-white border-0"
+                        >
+                            {running ? 'Analysing…' : 'Run Full Analysis'}
+                        </Button>
+                        {result?.status === 'complete' && (
+                            <Button variant="outline" size="sm" onClick={downloadGeoJSON}>
+                                <Download className="w-4 h-4 mr-1" />
+                                Casualties GeoJSON
+                            </Button>
+                        )}
+                    </div>
+
+                    {error && <p className="text-sm text-dead mb-3">{error}</p>}
+
+                    {running && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                            <RefreshCw className="w-4 h-4 animate-spin text-forest" />
+                            Running ortho pipeline (~7 min) — page will update automatically…
+                        </div>
+                    )}
+
+                    {result && result.status === 'complete' && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {[
+                                { label: 'Pits Detected',    value: result.in_field?.toLocaleString() ?? '—' },
+                                { label: 'Alive',            value: result.alive?.toLocaleString()    ?? '—', color: 'text-alive' },
+                                { label: 'Dead / Casualty',  value: result.dead?.toLocaleString()    ?? '—', color: 'text-dead'  },
+                                { label: 'Survival Rate',    value: result.survival_pct != null ? `${result.survival_pct}%` : '—',
+                                  color: (result.survival_pct ?? 0) >= 75 ? 'text-alive' : 'text-dead' },
+                            ].map(({ label, value, color }) => (
+                                <div key={label} className="bg-muted/40 rounded-xl p-4">
+                                    <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                                    <p className={`text-xl font-semibold ${color ?? ''}`}>{value}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {result && result.status !== 'complete' && !running && (
+                        <p className="text-sm text-muted-foreground">
+                            No results yet for {site}. Click <strong>Run Full Analysis</strong> to start.
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
+        </motion.div>
+    );
 }
 
 // Format large numbers (Indian format: Cr, Lakh)
@@ -645,6 +763,11 @@ export default function DashboardPage() {
                             Generate Report
                         </Button>
                     </motion.div>
+
+                    {/* Field Analysis — orthomosaic-based full-site survival */}
+                    <div className="mt-8">
+                        <FieldAnalysisCard />
+                    </div>
                 </main>
             </div>
         </div>

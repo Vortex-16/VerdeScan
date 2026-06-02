@@ -1,180 +1,166 @@
-# 🌲 VerdeScan: AI-Powered Afforestation Monitoring System
+# VerdeScan — AI-Powered Afforestation Monitoring
 
-**Proof of Concept for Odisha Forest Department**  
-*Monitor. Analyze. Verify.*
+Proof-of-concept for the Odisha Forest Department's drone-based afforestation monitoring program.
 
----
+**Problem:** 5 crore saplings planted annually across Odisha. Are they surviving? Manual survival walks are slow, expensive, and imprecise. The department needs to know *exactly* which GPS locations have casualties.
 
-## 📜 Project Overview
-**Problem:** The Odisha Forest Department plants nearly 5 crore trees annually but struggles to monitor survival rates due to manual, inefficient surveys in difficult terrain.  
-**Solution:** VerdeScan automates this process using **Drone Imagery** and **Computer Vision**. It tracks forest patches over 3 years, identifying individual saplings, calculating survival rates, and locating casualties with GPS precision.
-
-**Key Capabilities:**
-*   **Precision AI:** Custom CNN Model trained on 4000+ high-res patch tiles.
-*   **Lifecycle Tracking:** Monitors distinct phases (Pitting → Planting → Weeding).
-*   **Proof of Survival:** Mathematically proven to locate missing saplings with **100% accuracy** (verified on 10,000-point simulation).
+**Solution:** VerdeScan analyses orthomosaic drone imagery to produce a GeoJSON file of every dead sapling's GPS coordinates — directly verifiable against field ground truth.
 
 ---
 
-## 🛠️ Technology Stack
-
-### Backend (AI Engine)
-| Technology | Purpose |
-| :--- | :--- |
-| **Python 3.11** | Core programming language |
-| **FastAPI** | High-performance async API framework |
-| **Uvicorn** | ASGI server for production deployment |
-| **PyTorch** | Deep learning framework for CNN model |
-| **TorchVision** | Image transforms and model utilities |
-| **OpenCV (Headless)** | Image processing, thresholding, contour detection |
-| **NumPy** | Numerical computations for array operations |
-| **Pillow** | Image loading and preprocessing |
-| **Pydantic** | Data validation and settings management |
-
-### Frontend (Dashboard)
-| Technology | Purpose |
-| :--- | :--- |
-| **Next.js 14** | React framework with SSR/SSG |
-| **React 18** | Component-based UI library |
-| **TypeScript** | Type-safe JavaScript |
-| **Tailwind CSS** | Utility-first styling |
-
-### ML Pipeline
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Model Architecture** | `SimpleCNN` (Custom) | 2-layer Conv + 2 FC layers for binary classification |
-| **Input Size** | 224×224 RGB | Standardized tile size from 4000×3000 orthomosaic |
-| **Training Data** | 4000+ tiles | Extracted from Post-Pitting & Post-Planting imagery |
-| **Accuracy** | 99.50% | Validated on held-out test set |
-
-### Computer Vision Algorithms
-| Operation | Algorithm | Library |
-| :--- | :--- | :--- |
-| **Pit Detection (OP1)** | Adaptive Thresholding + Contour Analysis | OpenCV |
-| **Sapling Detection (OP2)** | Trained CNN Classifier | PyTorch |
-| **Weeding Patch (OP3)** | Hough Circle Transform | OpenCV |
-| **Image Alignment** | ORB Feature Matching + Homography | OpenCV |
-
----
-
-## 🔬 Methodology & Physical Logic
-
-The system is hard-coded to the specific operational lifecycle of the project:
-
-| Phase | Time Period | Physical Operation | Visual Signature | AI Logic |
-| :--- | :--- | :--- | :--- | :--- |
-| **OP1** | Mar-May (Yr 1) | **Pitting** (Digging 45cm³ pits) | Dark square shadows (~18px @ 2.5cm/px) | Adaptive Thresholding + Contour Analysis |
-| **OP2** | Jul (Yr 1) | **Planting** (4-6ft Saplings) | Green foliage spikes | **Trained CNN Model (Class 1: Sapling)** |
-| **OP3** | Oct-Nov (Yr 1-3) | **Weeding** (1m cleared soil) | Bright circular patches (~40px diameter) | Hough Circle Transform |
-
-**Survival Logic:**  
-The system compares initial Pits (OP1) vs Surviving Weeding Patches (OP3/Year X). If a Pit location has no corresponding Weeding Patch within 1.25m (50px), it is marked as a **Casualty**.
-
----
-
-## 🏗️ System Architecture
+## How It Works
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Drone Survey  │────▶│   Pix4D/OpenCV   │────▶│  Orthomosaic    │
-│   (Mavic 3T)    │     │   (Processing)   │     │  (4000×3000)    │
-└─────────────────┘     └──────────────────┘     └────────┬────────┘
-                                                          │
-                        ┌─────────────────────────────────▼─────────────────────────────────┐
-                        │                     VerdeScan Backend                              │
-                        │  ┌─────────────┐  ┌───────────────┐  ┌─────────────────────────┐  │
-                        │  │ FastAPI     │  │ ForestMonitor │  │ ForestMLProcessor       │  │
-                        │  │ (REST API)  │──│ (CV Logic)    │──│ (CNN Inference)         │  │
-                        │  └─────────────┘  └───────────────┘  └─────────────────────────┘  │
-                        │                                              │                     │
-                        │                         ┌────────────────────▼──────────────────┐  │
-                        │                         │  forest_model.pth (51MB Trained CNN) │  │
-                        │                         └───────────────────────────────────────┘  │
-                        └───────────────────────────────────────┬───────────────────────────┘
-                                                                │
-                                                                ▼
-                        ┌───────────────────────────────────────────────────────────────────┐
-                        │                     Next.js Dashboard                              │
-                        │   [Map View]  [Survival Stats]  [Casualty Locations]  [Reports]   │
-                        └───────────────────────────────────────────────────────────────────┘
+OP1 orthomosaic  →  Detect all planting pits  →  GPS coordinates for ~8,000 pits
+                                                            |
+OP3 orthomosaic  →  Classify each pit location  →  alive / dead / no_sapling
+                                                            |
+                                              Casualties GeoJSON (lat/lon per dead sapling)
 ```
 
----
-
-## ✅ Algorithm Verification (Proof of Work)
-
-1.  **Model Accuracy:**
-    *   **Pits:** 100% Identification (Verified on training samples).
-    *   **Saplings:** 100% Identification (Verified on training samples).
-
-2.  **Survival Logic Scale Test (10,000 Saplings):**
-    *   **Scenario:** 10,000 trees planted, 1,500 (15%) randomly killed.
-    *   **System Result:** Found **exactly 1,500 casualties**.
-    *   **Location Accuracy:** **100%** (Every missing coordinate matched perfectly).
-    *   **Processing Time:** ~16 seconds for 10,000 points.
-
-3.  **Security Testing:**
-    *   Path Traversal: ✅ Blocked
-    *   SQL Injection: ✅ Harmless
-    *   XSS Attempts: ✅ Sanitized
-    *   Invalid File Types: ✅ Rejected
+This architecture matches the problem statement recommendation: *"use coordinate information from OP1 images, as pits can easily be identified. Match with OP3 to check sapling survival."*
 
 ---
 
-## 🚀 How to Run the System
+## Technology Stack
+
+### Backend
+| Component | Technology |
+|-----------|------------|
+| API Framework | FastAPI + Uvicorn |
+| ML Model | ResNet18 pretrained (PyTorch) — 3-class: alive / dead / no_sapling |
+| Computer Vision | OpenCV — Hough circles, CLAHE, darkness validation |
+| Georeferencing | rasterio + pyproj — GeoTIFF CRS → WGS84 lat/lon |
+| Async Processing | asyncio task queue with GPU batched inference |
+
+### Frontend
+| Component | Technology |
+|-----------|------------|
+| Framework | Next.js 14 + TypeScript |
+| Styling | Tailwind CSS |
+| Animations | Framer Motion + GSAP |
+
+### ML Model (V2)
+- **Architecture:** ResNet18 + ImageNet pretrained weights + custom 3-class head
+- **Training data:** 15,000 tiles from all survey stages (Pre-Pitting, Post-Pitting, Post-Planting, Post-SW)
+- **Validation accuracy:** 99.9% on held-out source images
+- **Classes:** `alive` (live sapling) / `dead` (died sapling) / `no_sapling` (bare ground)
+
+---
+
+## Running the System
 
 ### Prerequisites
-*   Python 3.10+
-*   Node.js 18+
-*   Git
+- Python 3.10+ with CUDA-capable GPU (recommended)
+- Node.js 18+
 
-### 1. Setup Backend (AI Engine)
+### Backend
 ```bash
 cd "AI Model"
 pip install -r requirements.txt
 python run_server.py
 ```
-> The API will start at `http://localhost:8000`.  
-> *Note: The trained model (51MB) is already loaded in `ml_models/forest_model.pth`.*
+API available at http://localhost:8000 | Docs at http://localhost:8000/docs
 
-### 2. Setup Frontend (Dashboard)
+### Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-> The Dashboard will be live at `http://localhost:3000`.
+Dashboard at http://localhost:3000
+
+### Full Orthomosaic Pipeline (primary analysis)
+```bash
+cd "AI Model"
+python ortho_pipeline.py --site benkmura
+python ortho_pipeline.py --site debadihi
+```
+Outputs: `results/{site}/{site}_casualties.geojson` — load in Google Earth or QGIS to verify against ground truth.
+
+### (Re)train the model
+```bash
+cd "AI Model"
+python build_dataset_v2.py           # builds 15k-tile dataset from raw imagery
+python train_improved.py --dataset processed_dataset_v2
+cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
+```
 
 ---
 
-## ☁️ Cloud Deployment (Render)
+## Key API Endpoints
 
-This project is configured for **1-Click Deployment** on Render.
-
-1.  **Configuration:** `render.yaml` is provided in the root.
-2.  **Build Command:** `pip install -r requirements.txt`
-3.  **Start Command:** `python run_server.py`
-4.  **Health Check:** `/health` endpoint
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/analyze-site?site=benkmura` | POST | Run full orthomosaic pipeline (background) |
+| `/api/site-result/{site}` | GET | Survival stats + full casualty GPS list |
+| `/api/upload-image` | POST | Upload single image for quick analysis |
+| `/api/task-status/{task_id}` | GET | Poll processing progress |
+| `/api/stats` | GET | Global statistics |
+| `/health` | GET | System health |
 
 ---
 
-## 📂 Project Structure
+## Project Structure
+
 ```
 VerdeScan/
-├── AI Model/                    # Backend (FastAPI + ML)
-│   ├── api/main.py              # REST API endpoints
-│   ├── core/forest_monitor.py   # CV logic (OP1/OP3 detection)
-│   ├── core/forest_processor.py # CNN integration (sliding window)
-│   ├── ml_models/               # Trained model (forest_model.pth)
-│   ├── config.py                # Environment settings
-│   └── requirements.txt         # Python dependencies
-├── frontend/                    # Next.js Dashboard
-├── Data/                        # Drone imagery storage
-├── render.yaml                  # Cloud deployment config
-└── README.md                    # This file
+├── AI Model/
+│   ├── api/main.py              — FastAPI server + all endpoints
+│   ├── core/
+│   │   ├── forest_processor.py  — CNN inference (auto-detects V1/V2 model)
+│   │   ├── task_manager.py      — Async processing queue
+│   │   ├── data_manager.py      — JSON persistence + CSV export
+│   │   └── health_classifier.py — HSV fallback classifier
+│   ├── models/
+│   │   ├── data_structures.py   — Dataclasses (TreeResult, ProcessingResult…)
+│   │   └── ml_processor.py      — Abstract base + Gemini integration
+│   ├── ml_models/
+│   │   └── forest_model.pth     — Active model (ResNet18, 3-class, 99.9% val acc)
+│   ├── ortho_pipeline.py        — Orthomosaic pit-detection + survival pipeline
+│   ├── build_dataset_v2.py      — Dataset builder from raw drone imagery
+│   ├── train_improved.py        — Model training script
+│   ├── tests/test_pipeline.py   — Test suite (6 tests, all passing)
+│   ├── config.py                — Pydantic settings
+│   └── requirements.txt
+├── frontend/                    — Next.js dashboard
+│   └── src/
+│       ├── app/dashboard/       — Dashboard pages
+│       ├── components/          — Shared UI components
+│       ├── hooks/useCounter.ts  — Animated counter
+│       └── lib/api.ts           — API client
+├── Data/                        — Raw drone imagery (not committed)
+├── render.yaml                  — Render.com deployment config
+└── README.md
 ```
 
-## 👥 Team VerdeScan
-*Building a greener future, one pixel at a time.*
+---
+
+## Results (Benkmura VF)
+
+| Metric | Value |
+|--------|-------|
+| Pits detected on OP1 mosaic | 3,900 |
+| In-field detections on OP3 | 2,921 |
+| Alive | 881 (30.2%) |
+| Dead / Casualties | 2,040 (69.8%) |
+| Inference time (GPU batch=256) | 6 seconds |
+| Total pipeline time | ~7 minutes |
+| Output | `results/benkmura/benkmura_casualties.geojson` |
 
 ---
+
+## Cloud Deployment
+
+Configured for Render.com via `render.yaml`.
+
+```bash
+# Backend
+pip install -r "AI Model/requirements.txt"
+python "AI Model/run_server.py"
+
+# Frontend
+cd frontend && npm install && npm run build && npm start
+```
+
+Set `NEXT_PUBLIC_API_URL` env var to your deployed backend URL.

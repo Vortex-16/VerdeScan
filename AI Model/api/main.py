@@ -9,6 +9,7 @@ import re
 import uuid
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Dict, Any, List
 import aiofiles
 
@@ -380,6 +381,107 @@ async def get_queue_status():
         return task_manager.get_queue_status()
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.post("/api/analyze-site")
+async def analyze_site(
+    background_tasks: "BackgroundTasks",
+    site: str = "benkmura",
+):
+    """
+    Trigger the orthomosaic-based full-field survival analysis pipeline.
+    Runs asynchronously — poll /api/site-result/{site} for the result.
+
+    site: 'benkmura' or 'debadihi'
+    """
+    from fastapi import BackgroundTasks as BT
+    valid_sites = {"benkmura", "debadihi"}
+    if site not in valid_sites:
+        raise HTTPException(status_code=400, detail=f"site must be one of {valid_sites}")
+
+    result_path = os.path.join(BASE_DIR, "AI Model", "results", site, f"{site}_all_detections.geojson")
+    flag_path   = os.path.join(BASE_DIR, "AI Model", "results", site, "_running")
+
+    if os.path.exists(flag_path):
+        return {"status": "already_running", "site": site,
+                "message": "Pipeline is already running for this site."}
+
+    def run_pipeline(site_name: str):
+        import subprocess, sys
+        script = os.path.join(BASE_DIR, "AI Model", "ortho_pipeline.py")
+        os.makedirs(os.path.dirname(flag_path), exist_ok=True)
+        Path(flag_path).touch()
+        try:
+            subprocess.run(
+                [sys.executable, script, "--site", site_name],
+                cwd=BASE_DIR, capture_output=True, text=True, timeout=1800
+            )
+        finally:
+            if os.path.exists(flag_path):
+                os.remove(flag_path)
+
+    background_tasks.add_task(run_pipeline, site)
+    return {
+        "status": "started",
+        "site": site,
+        "message": f"Ortho pipeline started for {site}. Poll /api/site-result/{site} for results.",
+    }
+
+
+@app.get("/api/site-result/{site}")
+async def get_site_result(site: str):
+    """
+    Get the latest ortho-pipeline result for a site.
+    Returns survival statistics + list of casualty GPS coordinates.
+    """
+    valid_sites = {"benkmura", "debadihi"}
+    if site not in valid_sites:
+        raise HTTPException(status_code=400, detail=f"Unknown site: {site}")
+
+    flag_path    = os.path.join(BASE_DIR, "AI Model", "results", site, "_running")
+    geojson_path = os.path.join(BASE_DIR, "AI Model", "results", site, f"{site}_all_detections.geojson")
+
+    running = os.path.exists(flag_path)
+
+    if not os.path.exists(geojson_path):
+        return {
+            "site":    site,
+            "status":  "running" if running else "not_started",
+            "message": "No results yet. POST /api/analyze-site?site={site} to start.",
+        }
+
+    try:
+        async with aiofiles.open(geojson_path, "r") as f:
+            raw = await f.read()
+        features = json.loads(raw).get("features", [])
+
+        alive   = [f for f in features if f["properties"]["status"] == "alive"]
+        dead    = [f for f in features if f["properties"]["status"] == "dead"]
+        in_field = len(alive) + len(dead)
+        survival_pct = round(len(alive) / in_field * 100, 1) if in_field else 0
+
+        casualties = [
+            {
+                "lat":  f["geometry"]["coordinates"][1],
+                "lon":  f["geometry"]["coordinates"][0],
+                "conf": f["properties"]["confidence"],
+            }
+            for f in sorted(dead, key=lambda x: x["properties"]["confidence"], reverse=True)
+        ]
+
+        return {
+            "site":           site,
+            "status":         "running" if running else "complete",
+            "total_detected": len(features),
+            "in_field":       in_field,
+            "alive":          len(alive),
+            "dead":           len(dead),
+            "survival_pct":   survival_pct,
+            "casualties":     casualties,
+        }
+    except Exception as e:
+        logger.error(f"Error reading site result for {site}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read results")
 
 
 @app.delete("/api/task/{task_id}")

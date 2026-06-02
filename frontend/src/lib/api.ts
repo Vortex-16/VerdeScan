@@ -58,6 +58,18 @@ export interface PatchData {
     processing_time?: number;
 }
 
+export interface SiteResult {
+    site: string;
+    status: 'complete' | 'running' | 'not_started' | string;
+    total_detected?: number;
+    in_field?: number;
+    alive?: number;
+    dead?: number;
+    survival_pct?: number;
+    casualties?: Array<{ lat: number; lon: number; conf: number }>;
+    message?: string;
+}
+
 export interface TaskStatusResponse {
     task_id: string;
     status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | string;
@@ -172,8 +184,28 @@ export const api = {
 
     /** Returns the full URL to an uploaded image served from /api/uploads/<filename> */
     getImageUrl(filename: string): string {
-        // API_BASE_URL is e.g. http://127.0.0.1:8000/api
-        // Static mounts are at http://127.0.0.1:8000/api/uploads/<filename>
         return `${API_BASE_URL}/uploads/${filename}`;
+    },
+
+    async analyzeSite(site: 'benkmura' | 'debadihi'): Promise<{ status: string; message: string }> {
+        try {
+            const res = await fetch(`${API_BASE_URL}/analyze-site?site=${site}`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to start analysis');
+            return await res.json();
+        } catch (error) {
+            console.error('API Error [analyzeSite]:', error);
+            return { status: 'error', message: String(error) };
+        }
+    },
+
+    async getSiteResult(site: 'benkmura' | 'debadihi'): Promise<SiteResult | null> {
+        try {
+            const res = await fetch(`${API_BASE_URL}/site-result/${site}`);
+            if (!res.ok) throw new Error('Failed to fetch site result');
+            return await res.json();
+        } catch (error) {
+            console.error('API Error [getSiteResult]:', error);
+            return null;
+        }
     },
 };
