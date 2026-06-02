@@ -95,6 +95,7 @@ AI Model/ml_models/*.pkl
 
 # AI Model — runtime generated files
 AI Model/data/
+AI Model/results/
 AI Model/static/proof_images/
 AI Model/static/test_data/
 AI Model/logs/
@@ -105,6 +106,8 @@ AI Model/data.results.json.corrupt
 # Temporary analysis images (generated during dev/debugging)
 AI Model/*.jpg
 AI Model/*.png
+/*.png
+/*.jpg
 
 # Keep important config files
 !requirements.txt
