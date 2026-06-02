@@ -8,7 +8,6 @@ import {
     TrendingDown,
     Download,
     Calendar,
-    Filter,
     Menu,
     Leaf,
     Home,
@@ -243,12 +242,6 @@ export default function AnalyticsPage() {
     const patchesCounter = useCounter(stats.patches);
     const criticalCounter = useCounter(stats.critical);
 
-    // Generate monthly data from current survival rate
-    const monthlyData = Array.from({ length: 6 }, (_, i) => ({
-        month: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'][i],
-        value: Math.max(0, Math.min(100, Math.round(stats.overall + (5 - i) * 0.5)))
-    }));
-
     return (
         <div className="min-h-screen bg-background">
             <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -333,27 +326,21 @@ export default function AnalyticsPage() {
                                 <CardTitle className="text-base font-medium">6-Month Trend</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="h-48 flex items-end justify-between gap-2">
-                                    {monthlyData.map((item, i) => (
-                                        <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                                            <motion.div
-                                                initial={{ height: 0 }}
-                                                animate={{ height: `${item.value}%` }}
-                                                transition={{ duration: 0.6, delay: i * 0.1 }}
-                                                className="w-full bg-forest rounded-t relative"
-                                            >
-                                                <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-medium">
-                                                    {item.value}%
-                                                </span>
-                                            </motion.div>
-                                            <span className="text-xs text-muted-foreground">{item.month}</span>
-                                        </div>
-                                    ))}
+                                <div className="h-48 flex items-center justify-center">
+                                    <div className="text-center">
+                                        <Calendar className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
+                                        <p className="text-sm font-medium text-muted-foreground">No historical trend data</p>
+                                        <p className="text-xs text-muted-foreground/70 mt-1 max-w-[200px] mx-auto">
+                                            Trend data builds up over multiple survey uploads across different dates.
+                                        </p>
+                                    </div>
                                 </div>
                                 <div className="mt-4 pt-4 border-t border-border">
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-muted-foreground">Target: 85%</span>
-                                        <span className="text-forest font-medium">Current: 87%</span>
+                                        <span className={`font-medium ${stats.overall > 0 ? 'text-forest' : 'text-muted-foreground'}`}>
+                                            Current: {stats.overall > 0 ? `${stats.overall.toFixed(1)}%` : '—'}
+                                        </span>
                                     </div>
                                 </div>
                             </CardContent>

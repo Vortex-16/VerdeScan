@@ -102,17 +102,26 @@ function ComparisonSlider({
             onMouseLeave={handleMouseUp}
             onTouchMove={handleTouchMove}
         >
-            {/* Left Image (Historical/Previous) - NO MOCKS */}
+            {/* Left Image (Historical/Previous) */}
             <div className="absolute inset-0 bg-neutral-100 flex items-center justify-center">
-                <div className="text-center p-8 opacity-50">
-                    <Layers className="w-12 h-12 mx-auto mb-2 text-neutral-400" />
-                    <p className="font-semibold text-neutral-500">No Historical Data</p>
-                    <p className="text-xs text-neutral-400">First survey point recorded</p>
-                </div>
+                {imageUrl && !imgError ? (
+                    <img
+                        src={imageUrl}
+                        alt="Current Patch State"
+                        className="absolute inset-0 w-full h-full object-contain bg-black/5"
+                    />
+                ) : (
+                    <div className="text-center p-8 opacity-50">
+                        <Layers className="w-12 h-12 mx-auto mb-2 text-neutral-400" />
+                        <p className="font-semibold text-neutral-500">No Image Available</p>
+                        <p className="text-xs text-neutral-400">Upload a drone image for this patch</p>
+                    </div>
+                )}
                 {/* Label */}
-                <div className="absolute top-4 left-4 bg-white/50 backdrop-blur rounded-lg px-3 py-2 z-10 border border-black/5">
+                <div className="absolute top-4 left-4 bg-white/80 backdrop-blur rounded-lg px-3 py-2 z-10 border border-black/5">
                     <p className="font-semibold text-sm">{leftLabel}</p>
                     <p className="text-xs text-muted-foreground">{leftDate || 'N/A'}</p>
+                    <p className="text-xs text-amber-600 mt-0.5">Only 1 survey point available</p>
                 </div>
             </div>
 
@@ -355,8 +364,8 @@ function PatchInfoCard({ patchData }: { patchData: PatchData | null }) {
                 <div className="mt-4 p-3 bg-muted/50 rounded-lg flex items-start gap-2">
                     <Info className="w-4 h-4 text-forest mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-muted-foreground">
-                        Viewing real-time AI analysis results.
-                        Historical comparison simulated until more data is available.
+                        Only one survey point exists for this patch. True before/after comparison
+                        requires a second upload from a different flight date.
                     </p>
                 </div>
             </CardContent>
@@ -470,14 +479,14 @@ function TemporalComparisonInner() {
                     {/* Comparison Slider */}
                     <div className="flex-1 relative bg-black/5">
                         <ComparisonSlider
-                            leftLabel={selectedStage === 'op3' ? 'Simulation' : currentStage.label}
-                            rightLabel="Current Logic"
-                            leftDate="Reference"
-                            rightDate="Today"
+                            leftLabel="Previous Survey"
+                            rightLabel="Current Survey"
+                            leftDate="Earlier (same image — only 1 survey point)"
+                            rightDate={patchData?.metadata?.timestamp ? new Date(patchData.metadata.timestamp).toLocaleDateString() : 'Latest upload'}
                             showOverlay={showOverlay}
                             overlayOpacity={overlayOpacity}
                             patchData={patchData}
-                            imageUrl={imageUrl} // Only passes image if available
+                            imageUrl={imageUrl}
                         />
                     </div>
 

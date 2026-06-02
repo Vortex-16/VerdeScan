@@ -45,6 +45,8 @@ class ForestMonitor:
     def detect_features(self, image: np.ndarray, operation_type: str, year: int) -> List[GeoPoint]:
         """
         Detect features based on the specific Operation (OP) type.
+        Returns pixel-coordinate GeoPoints only (lat/lon = 0.0 — no GeoTIFF metadata here).
+        Use ortho_pipeline.py for georeferenced detection.
         """
         if operation_type == "OP1":
             return self._detect_pits(image, year)
@@ -89,7 +91,7 @@ class ForestMonitor:
                         cY = int(M["m01"] / M["m00"])
                         
                         pits.append(GeoPoint(
-                            lat=0.0, lon=0.0, # Placeholder, needs GeoTIFF metadata
+                            lat=0.0, lon=0.0,  # No GeoTIFF metadata — pixel coords only
                             pixel_x=cX, pixel_y=cY,
                             confidence=0.85,
                             type='PIT',
@@ -185,8 +187,11 @@ class ForestMonitor:
         kp2, des2 = orb.detectAndCompute(gray_target, None)
 
         if des1 is None or des2 is None:
-            logger.warning("Could not find features for alignment")
-            return target_image
+            raise ValueError(
+                "ORB alignment failed: one or both images have no detectable features "
+                "(featureless sky, uniform canopy, or overexposure). "
+                "Provide images with visible texture."
+            )
 
         # Match features
         matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -209,6 +214,12 @@ class ForestMonitor:
 
         # Find homography
         h, mask = cv2.findHomography(points2, points1, cv2.RANSAC)
+
+        if h is None:
+            raise ValueError(
+                f"ORB alignment failed: could not compute homography from "
+                f"{len(matches)} matches (need at least 4 inliers)."
+            )
 
         # Warp image
         height, width, channels = base_image.shape
