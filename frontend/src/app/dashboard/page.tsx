@@ -442,15 +442,18 @@ function AlertPatchesTable({ patches }: { patches: PatchAlert[] }) {
 function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
     const [file, setFile] = useState<File | null>(null);
     const [patchName, setPatchName] = useState('');
+    const [site, setSite] = useState<string>('none');
     const [uploading, setUploading] = useState(false);
     const [status, setStatus] = useState<string>('');
     const [error, setError] = useState<string>('');
+    const [cameraGps, setCameraGps] = useState<{ lat: number; lon: number } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setFile(e.target.files[0]);
             setError('');
+            setCameraGps(null);
         }
     };
 
@@ -461,17 +464,21 @@ function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
         setUploading(true);
         setError('');
         setStatus('Uploading…');
+        setCameraGps(null);
 
-        const result = await api.uploadImage(file, patchName);
+        const siteArg = site !== 'none' ? site : undefined;
+        const result = await api.uploadImage(file, patchName, siteArg);
         if (!result) {
             setError('Upload failed — server may be unavailable');
             setUploading(false);
             return;
         }
 
+        if (result.camera_gps) setCameraGps(result.camera_gps);
+
         setStatus('Queued — AI processing…');
         const taskId = result.task_id;
-        const deadline = Date.now() + 120_000; // 2-minute hard timeout
+        const deadline = Date.now() + 120_000;
 
         while (Date.now() < deadline) {
             await new Promise(r => setTimeout(r, 2000));
@@ -537,6 +544,27 @@ function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
                                 <label className="text-sm font-medium mb-2 block">Patch Name</label>
                                 <input type="text" placeholder="e.g., Debadihi_VF" value={patchName} onChange={(e) => setPatchName(e.target.value)} className="w-full h-10 px-4 bg-muted/50 rounded-lg border-0 focus:ring-2 focus:ring-forest/50" />
                             </div>
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">
+                                    Link to Site
+                                    <span className="ml-2 text-xs font-normal text-muted-foreground">(optional — pins image on Field Map)</span>
+                                </label>
+                                <select
+                                    value={site}
+                                    onChange={e => setSite(e.target.value)}
+                                    className="w-full h-10 px-3 bg-muted/50 rounded-lg border-0 text-sm focus:ring-2 focus:ring-forest/50 focus:outline-none"
+                                >
+                                    <option value="none">— Not linked to a site —</option>
+                                    <option value="benkmura">Benkmura VF</option>
+                                    <option value="debadihi">Debadihi VF</option>
+                                </select>
+                            </div>
+                            {cameraGps && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                    <MapPin className="w-3 h-3 text-forest" />
+                                    Camera GPS: {cameraGps.lat.toFixed(5)}, {cameraGps.lon.toFixed(5)}
+                                </p>
+                            )}
                             {error && <p className="text-sm text-dead">{error}</p>}
                             {status && <p className={`text-sm ${status.includes('✅') ? 'text-alive' : 'text-muted-foreground'}`}>{status}</p>}
                             <Button onClick={handleUpload} disabled={uploading || !file} className="w-full btn-premium gradient-forest text-white border-0">

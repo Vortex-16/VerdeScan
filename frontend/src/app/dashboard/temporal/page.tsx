@@ -27,6 +27,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { api, PatchData } from '@/lib/api';
 
 // Comparison Slider Component
@@ -364,7 +365,7 @@ function PatchInfoCard({ patchData }: { patchData: PatchData | null }) {
 }
 
 // Main Temporal Comparison Page
-export default function TemporalComparisonPage() {
+function TemporalComparisonInner() {
     const searchParams = useSearchParams();
     const patchId = searchParams.get('id');
 
@@ -554,5 +555,13 @@ export default function TemporalComparisonPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function TemporalComparisonPage() {
+    return (
+        <Suspense fallback={null}>
+            <TemporalComparisonInner />
+        </Suspense>
     );
 }

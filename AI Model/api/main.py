@@ -10,7 +10,7 @@ import uuid
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import aiofiles
 
 from core.forest_processor import ForestMLProcessor
@@ -67,10 +67,11 @@ app.add_middleware(
 )
 
 # Base paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # → AI Model/
+REPO_DIR  = os.path.dirname(BASE_DIR)                                     # → VerdeScan/
 STATIC_DIR = settings.static_dir
 DATA_DIR = settings.data_dir
-FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
+FRONTEND_DIR = os.path.join(REPO_DIR, "frontend")
 
 # Mount static files
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -89,6 +90,52 @@ def _enrich_patch(patch_id: str, patch_data: dict) -> dict:
     if "details" in entry and "trees" not in entry:
         entry["trees"] = entry["details"]
     return entry
+
+
+def _extract_gps_exif(image_bytes: bytes) -> Optional[Tuple[float, float]]:
+    """
+    Extract GPS coordinates from JPEG/TIFF EXIF data.
+    Returns (lat, lon) in decimal degrees, or None if absent.
+    """
+    try:
+        from PIL import Image
+        from PIL.ExifTags import TAGS, GPSTAGS
+        import io
+
+        img = Image.open(io.BytesIO(image_bytes))
+        exif_data = img._getexif()
+        if not exif_data:
+            return None
+
+        gps_info = None
+        for tag_id, value in exif_data.items():
+            tag = TAGS.get(tag_id, tag_id)
+            if tag == "GPSInfo":
+                gps_info = {GPSTAGS.get(k, k): v for k, v in value.items()}
+                break
+
+        if not gps_info:
+            return None
+
+        def _dms_to_dd(dms, ref: str) -> float:
+            d, m, s = dms
+            # Pillow may return IFDRational or tuples — normalise to float
+            d = float(d.numerator) / float(d.denominator) if hasattr(d, 'numerator') else float(d)
+            m = float(m.numerator) / float(m.denominator) if hasattr(m, 'numerator') else float(m)
+            s = float(s.numerator) / float(s.denominator) if hasattr(s, 'numerator') else float(s)
+            dd = d + m / 60.0 + s / 3600.0
+            return -dd if ref in ("S", "W") else dd
+
+        lat = _dms_to_dd(gps_info["GPSLatitude"],  gps_info.get("GPSLatitudeRef",  "N"))
+        lon = _dms_to_dd(gps_info["GPSLongitude"], gps_info.get("GPSLongitudeRef", "E"))
+        return lat, lon
+    except Exception:
+        return None
+
+
+# In-memory survey log: maps site → list of survey entries
+# Each entry: {task_id, patch_id, lat, lon, uploaded_at}
+_site_surveys: Dict[str, List[Dict[str, Any]]] = {}
 
 
 # =================================================================
@@ -135,8 +182,9 @@ async def health_check():
 async def upload_image(
     file: UploadFile = File(...),
     patch_name: str = Form(...),
+    site: Optional[str] = Form(default=None),
 ):
-    """Upload drone image for AI processing."""
+    """Upload drone image for AI processing. Optional 'site' links the image to the ortho site."""
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
@@ -169,6 +217,9 @@ async def upload_image(
                 detail=f"File too large. Maximum size: {settings.max_file_size} bytes",
             )
 
+        # Extract GPS from EXIF (best-effort — no error if absent)
+        gps = _extract_gps_exif(content)
+
         task_id = str(uuid.uuid4())
         upload_dir = os.path.join(DATA_DIR, "uploads")
         os.makedirs(upload_dir, exist_ok=True)
@@ -183,13 +234,27 @@ async def upload_image(
             patch_id=safe_patch_name,
         )
 
-        logger.info(f"Upload accepted: {safe_filename} → Task {task_id} (patch: {safe_patch_name})")
+        # Register as a survey point if a site was specified
+        valid_sites = {"benkmura", "debadihi"}
+        safe_site = site.strip().lower() if site else None
+        if safe_site and safe_site in valid_sites and gps:
+            _site_surveys.setdefault(safe_site, []).append({
+                "task_id": task_id,
+                "patch_id": safe_patch_name,
+                "lat": gps[0],
+                "lon": gps[1],
+                "uploaded_at": datetime.utcnow().isoformat(),
+            })
+            logger.info(f"Survey point registered for {safe_site}: {gps}")
+
+        logger.info(f"Upload accepted: {safe_filename} → Task {task_id} (patch: {safe_patch_name}, site: {safe_site}, gps: {gps})")
         return {
             "task_id": task_id,
             "status": task_status.status,
             "progress": task_status.progress,
             "estimated_time": task_status.estimated_time_remaining,
             "message": "Image uploaded successfully and queued for processing",
+            "camera_gps": {"lat": gps[0], "lon": gps[1]} if gps else None,
         }
 
     except HTTPException:
@@ -272,17 +337,54 @@ async def get_patch_data(patch_id: str):
 
 @app.get("/api/stats")
 async def get_global_stats():
-    """Get global statistics across all processed patches."""
+    """Get global statistics — merges uploaded-patch results with ortho site results."""
     try:
         stats = await task_manager.data_manager.get_global_statistics()
 
-        # If no real data yet, return demo data for the hackathon presentation
+        # Pull ortho site results to augment/replace the counts
+        ortho_trees = 0
+        ortho_alive = 0
+        ortho_dead  = 0
+        ortho_sites = 0
+        valid_sites = ["benkmura", "debadihi"]
+        for site in valid_sites:
+            geojson_path = os.path.join(BASE_DIR, "results", site, f"{site}_all_detections.geojson")
+            if not os.path.exists(geojson_path):
+                continue
+            try:
+                with open(geojson_path) as f:
+                    features = json.load(f).get("features", [])
+                alive = sum(1 for x in features if x["properties"]["status"] == "alive")
+                dead  = sum(1 for x in features if x["properties"]["status"] == "dead")
+                ortho_trees += alive + dead
+                ortho_alive += alive
+                ortho_dead  += dead
+                ortho_sites += 1
+            except Exception:
+                pass
+
+        if ortho_sites > 0:
+            total_alive = ortho_alive + stats.get("total_alive", 0)
+            total_dead  = ortho_dead  + stats.get("total_dead",  0)
+            total_trees = ortho_trees + stats.get("total_trees", 0)
+            survival    = round(total_alive / total_trees * 100, 1) if total_trees else 0.0
+            return {
+                "total_patches":   ortho_sites + stats.get("total_patches", 0),
+                "total_trees":     total_trees,
+                "total_alive":     total_alive,
+                "total_dead":      total_dead,
+                "total_diseased":  stats.get("total_diseased", 0),
+                "avg_survival_rate": survival,
+                "last_updated":    datetime.utcnow().isoformat(),
+            }
+
+        # No ortho data and no uploaded patches — return demo numbers
         if stats.get("total_patches", 0) == 0:
             return {
                 "total_patches": 2,
                 "total_trees": 18000,
-                "total_alive": 15660,  # 87 % survival
-                "total_dead": 1800,    # 1800 + 540 = 2340 non-alive; 15660+1800+540 = 18000 ✓
+                "total_alive": 15660,
+                "total_dead": 1800,
                 "total_diseased": 540,
                 "avg_survival_rate": 87.0,
                 "last_updated": datetime.utcnow().isoformat(),
@@ -383,6 +485,35 @@ async def get_queue_status():
         return {"error": str(e)}
 
 
+@app.get("/api/site-surveys/{site}")
+async def get_site_surveys(site: str):
+    """
+    Return all uploaded-image survey points for a site.
+    Each entry includes camera GPS + AI tree-count summary from that image.
+    """
+    valid_sites = {"benkmura", "debadihi"}
+    if site not in valid_sites:
+        raise HTTPException(status_code=400, detail=f"Unknown site: {site}")
+
+    surveys = _site_surveys.get(site, [])
+    enriched = []
+    for s in surveys:
+        entry = dict(s)
+        # Attach AI result summary if available
+        patch_data = await task_manager.data_manager.get_patch_data(s["patch_id"])
+        if patch_data:
+            summary = patch_data.get("summary", {})
+            entry["total_trees"] = summary.get("total_trees", 0)
+            entry["alive_trees"] = summary.get("alive_trees", 0)
+            entry["dead_trees"]  = summary.get("dead_trees", 0)
+            alive = summary.get("alive_trees", 0)
+            total = summary.get("total_trees", 1) or 1
+            entry["survival_pct"] = round(alive / total * 100, 1)
+        enriched.append(entry)
+
+    return {"site": site, "surveys": enriched}
+
+
 @app.post("/api/analyze-site")
 async def analyze_site(
     background_tasks: "BackgroundTasks",
@@ -399,8 +530,8 @@ async def analyze_site(
     if site not in valid_sites:
         raise HTTPException(status_code=400, detail=f"site must be one of {valid_sites}")
 
-    result_path = os.path.join(BASE_DIR, "AI Model", "results", site, f"{site}_all_detections.geojson")
-    flag_path   = os.path.join(BASE_DIR, "AI Model", "results", site, "_running")
+    result_path = os.path.join(BASE_DIR, "results", site, f"{site}_all_detections.geojson")
+    flag_path   = os.path.join(BASE_DIR, "results", site, "_running")
 
     if os.path.exists(flag_path):
         return {"status": "already_running", "site": site,
@@ -408,7 +539,7 @@ async def analyze_site(
 
     def run_pipeline(site_name: str):
         import subprocess, sys
-        script = os.path.join(BASE_DIR, "AI Model", "ortho_pipeline.py")
+        script = os.path.join(BASE_DIR, "ortho_pipeline.py")
         os.makedirs(os.path.dirname(flag_path), exist_ok=True)
         Path(flag_path).touch()
         try:
@@ -438,8 +569,8 @@ async def get_site_result(site: str):
     if site not in valid_sites:
         raise HTTPException(status_code=400, detail=f"Unknown site: {site}")
 
-    flag_path    = os.path.join(BASE_DIR, "AI Model", "results", site, "_running")
-    geojson_path = os.path.join(BASE_DIR, "AI Model", "results", site, f"{site}_all_detections.geojson")
+    flag_path    = os.path.join(BASE_DIR, "results", site, "_running")
+    geojson_path = os.path.join(BASE_DIR, "results", site, f"{site}_all_detections.geojson")
 
     running = os.path.exists(flag_path)
 
@@ -460,14 +591,13 @@ async def get_site_result(site: str):
         in_field = len(alive) + len(dead)
         survival_pct = round(len(alive) / in_field * 100, 1) if in_field else 0
 
-        casualties = [
-            {
-                "lat":  f["geometry"]["coordinates"][1],
-                "lon":  f["geometry"]["coordinates"][0],
-                "conf": f["properties"]["confidence"],
+        def _point(feat: dict) -> dict:
+            coords = feat["geometry"]["coordinates"]
+            return {
+                "lat":  coords[1],
+                "lon":  coords[0],
+                "conf": feat["properties"]["confidence"],
             }
-            for f in sorted(dead, key=lambda x: x["properties"]["confidence"], reverse=True)
-        ]
 
         return {
             "site":           site,
@@ -477,7 +607,8 @@ async def get_site_result(site: str):
             "alive":          len(alive),
             "dead":           len(dead),
             "survival_pct":   survival_pct,
-            "casualties":     casualties,
+            "casualties":     [_point(f) for f in sorted(dead, key=lambda x: x["properties"]["confidence"], reverse=True)],
+            "alive_locations": [_point(f) for f in sorted(alive, key=lambda x: x["properties"]["confidence"], reverse=True)],
         }
     except Exception as e:
         logger.error(f"Error reading site result for {site}: {e}")

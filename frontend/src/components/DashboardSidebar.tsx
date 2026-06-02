@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Home, Map, Layers, BarChart3, FileText, Settings, Leaf, X
+    Home, Map, MapPin, Layers, BarChart3, FileText, Settings, Leaf, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -16,7 +16,7 @@ interface NavLink {
 
 interface DashboardSidebarProps {
     /** Which page is currently active — matches the `label` of a nav link */
-    activePage: 'Dashboard' | 'Patch Explorer' | 'Temporal View' | 'Analytics' | 'Reports' | 'Settings';
+    activePage: 'Dashboard' | 'Patch Explorer' | 'Field Map' | 'Temporal View' | 'Analytics' | 'Reports' | 'Settings';
     /** Whether the mobile drawer is open */
     isOpen: boolean;
     onClose: () => void;
@@ -25,6 +25,7 @@ interface DashboardSidebarProps {
 const NAV_LINKS: NavLink[] = [
     { icon: Home,     label: 'Dashboard',     href: '/dashboard' },
     { icon: Map,      label: 'Patch Explorer', href: '/dashboard/explorer' },
+    { icon: MapPin,   label: 'Field Map',      href: '/dashboard/map' },
     { icon: Layers,   label: 'Temporal View',  href: '/dashboard/temporal' },
     { icon: BarChart3,label: 'Analytics',      href: '/dashboard/analytics' },
     { icon: FileText, label: 'Reports',        href: '/dashboard/reports' },

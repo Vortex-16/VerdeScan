@@ -200,12 +200,11 @@ export default function ReportsPage() {
                 // Patch Detail CSV
                 const details = await api.getPatchDetails(report.patchId);
                 if (details) {
-                    const headers = ['Tree ID', 'Classification', 'Confidence', 'Health', 'X', 'Y'];
+                    const headers = ['Tree ID', 'Status', 'Confidence', 'X', 'Y'];
                     const rows = details.trees.map(t => [
                         t.tree_id,
-                        t.classification,
+                        t.status,
                         t.classification_confidence,
-                        t.health_status,
                         t.bbox.x,
                         t.bbox.y
                     ].join(','));

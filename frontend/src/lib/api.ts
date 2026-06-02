@@ -58,6 +58,12 @@ export interface PatchData {
     processing_time?: number;
 }
 
+export interface SiteMarker {
+    lat: number;
+    lon: number;
+    conf: number;
+}
+
 export interface SiteResult {
     site: string;
     status: 'complete' | 'running' | 'not_started' | string;
@@ -66,8 +72,26 @@ export interface SiteResult {
     alive?: number;
     dead?: number;
     survival_pct?: number;
-    casualties?: Array<{ lat: number; lon: number; conf: number }>;
+    casualties?: SiteMarker[];
+    alive_locations?: SiteMarker[];
     message?: string;
+}
+
+export interface SurveyPoint {
+    task_id: string;
+    patch_id: string;
+    lat: number;
+    lon: number;
+    uploaded_at: string;
+    total_trees?: number;
+    alive_trees?: number;
+    dead_trees?: number;
+    survival_pct?: number;
+}
+
+export interface SiteSurveyResponse {
+    site: string;
+    surveys: SurveyPoint[];
 }
 
 export interface TaskStatusResponse {
@@ -148,12 +172,14 @@ export const api = {
 
     async uploadImage(
         file: File,
-        patchName: string
-    ): Promise<{ task_id: string; status: string } | null> {
+        patchName: string,
+        site?: string,
+    ): Promise<{ task_id: string; status: string; camera_gps?: { lat: number; lon: number } | null } | null> {
         try {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('patch_name', patchName);
+            if (site) formData.append('site', site);
 
             const res = await fetch(`${API_BASE_URL}/upload-image`, {
                 method: 'POST',
@@ -205,6 +231,17 @@ export const api = {
             return await res.json();
         } catch (error) {
             console.error('API Error [getSiteResult]:', error);
+            return null;
+        }
+    },
+
+    async getSiteSurveys(site: 'benkmura' | 'debadihi'): Promise<SiteSurveyResponse | null> {
+        try {
+            const res = await fetch(`${API_BASE_URL}/site-surveys/${site}`);
+            if (!res.ok) throw new Error('Failed to fetch site surveys');
+            return await res.json();
+        } catch (error) {
+            console.error('API Error [getSiteSurveys]:', error);
             return null;
         }
     },
