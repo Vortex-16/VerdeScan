@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,7 +135,34 @@ def _extract_gps_exif(image_bytes: bytes) -> Optional[Tuple[float, float]]:
 
 # In-memory survey log: maps site → list of survey entries
 # Each entry: {task_id, patch_id, lat, lon, uploaded_at}
+# Persisted to disk so survey points survive server restarts.
 _site_surveys: Dict[str, List[Dict[str, Any]]] = {}
+_SURVEYS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "data", "site_surveys.json")
+
+
+def _load_surveys():
+    """Load persisted survey points from disk on startup."""
+    global _site_surveys
+    try:
+        if os.path.exists(_SURVEYS_FILE):
+            with open(_SURVEYS_FILE) as f:
+                _site_surveys = json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load site_surveys.json: {e}")
+
+
+def _save_surveys():
+    """Persist survey points to disk."""
+    try:
+        os.makedirs(os.path.dirname(_SURVEYS_FILE), exist_ok=True)
+        with open(_SURVEYS_FILE, "w") as f:
+            json.dump(_site_surveys, f, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"Could not save site_surveys.json: {e}")
+
+
+_load_surveys()
 
 
 # =================================================================
@@ -245,6 +272,7 @@ async def upload_image(
                 "lon": gps[1],
                 "uploaded_at": datetime.utcnow().isoformat(),
             })
+            _save_surveys()  # persist immediately
             logger.info(f"Survey point registered for {safe_site}: {gps}")
 
         logger.info(f"Upload accepted: {safe_filename} → Task {task_id} (patch: {safe_patch_name}, site: {safe_site}, gps: {gps})")
@@ -516,7 +544,7 @@ async def get_site_surveys(site: str):
 
 @app.post("/api/analyze-site")
 async def analyze_site(
-    background_tasks: "BackgroundTasks",
+    background_tasks: BackgroundTasks,
     site: str = "benkmura",
 ):
     """
@@ -525,7 +553,6 @@ async def analyze_site(
 
     site: 'benkmura' or 'debadihi'
     """
-    from fastapi import BackgroundTasks as BT
     valid_sites = {"benkmura", "debadihi"}
     if site not in valid_sites:
         raise HTTPException(status_code=400, detail=f"site must be one of {valid_sites}")

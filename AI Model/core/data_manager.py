@@ -3,6 +3,7 @@ Data management for storing and retrieving processing results.
 """
 import json
 import os
+import re
 import asyncio
 import pandas as pd
 from datetime import datetime
@@ -26,10 +27,9 @@ class DataManager:
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
-        """Sanitize filename to prevent path traversal."""
-        # Remove directory separators and keep only safe characters
-        safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
-        sanitized = "".join(c for c in filename if c in safe_chars)
+        """Sanitize filename to prevent path traversal while keeping readable names."""
+        # Allow alphanumeric, hyphen, underscore, dot, space — strip everything else
+        sanitized = re.sub(r'[^\w\-. ]', '_', filename).strip()
         return sanitized if sanitized else "unnamed_patch"
     
     def ensure_data_directory(self):

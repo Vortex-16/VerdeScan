@@ -4,6 +4,7 @@ Tree health classification system using computer vision and ML techniques.
 import cv2
 import numpy as np
 import os
+from pathlib import Path
 from typing import Optional, Tuple
 from datetime import datetime
 import time
@@ -257,8 +258,8 @@ class TreeHealthClassifier:
             success = cv2.imwrite(filepath, tree_crop)
             
             if success:
-                # Return relative path for API serving
-                relative_path = os.path.relpath(filepath, settings.static_dir)
+                # Return POSIX-style relative path for URL serving (/static/proof_images/...)
+                relative_path = Path(filepath).relative_to(settings.static_dir).as_posix()
                 logger.info(f"Saved proof image: {relative_path}")
                 return relative_path
             else:
