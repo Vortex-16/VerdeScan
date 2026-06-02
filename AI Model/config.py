@@ -57,9 +57,16 @@ class Settings(BaseSettings):
             os.path.join(self.data_dir, "patches"),
             os.path.join(self.data_dir, "cache")
         ]
-        
+
         for directory in directories:
-            Path(directory).mkdir(parents=True, exist_ok=True)
+            try:
+                Path(directory).mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                import warnings
+                warnings.warn(
+                    f"VerdeScan: could not create directory '{directory}': {e}",
+                    stacklevel=2,
+                )
 
 # Global settings instance
 settings = Settings()

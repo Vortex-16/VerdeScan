@@ -29,19 +29,28 @@ class TreeHealthClassifier:
         self.confidence_threshold = settings.classification_confidence_threshold
         
         # Color ranges for health classification (HSV)
+        # Healthy green foliage
         self.healthy_green_range = {
             'lower': np.array([35, 40, 40]),
             'upper': np.array([85, 255, 255])
         }
-        
+
+        # Dead / bare-soil — broader saturation min (was 50→30) and wider hue (was 10-25→5-25)
         self.dead_brown_range = {
-            'lower': np.array([10, 50, 20]),
+            'lower': np.array([5, 30, 20]),
             'upper': np.array([25, 255, 200])
         }
-        
+
+        # Diseased / yellowing — lower saturation min (was 100→30), wider hue (was 20-35→20-45)
         self.diseased_yellow_range = {
-            'lower': np.array([20, 100, 100]),
-            'upper': np.array([35, 255, 255])
+            'lower': np.array([20, 30, 80]),
+            'upper': np.array([45, 255, 255])
+        }
+
+        # Stressed / pale-green foliage (low saturation green = water stress / early disease)
+        self.stressed_green_range = {
+            'lower': np.array([35, 15, 50]),
+            'upper': np.array([85, 55, 200])
         }
     
     def classify_health(self, tree_crop: np.ndarray, tree_id: int) -> HealthClassification:
@@ -118,42 +127,54 @@ class TreeHealthClassifier:
             
             # Healthy green pixels
             green_mask = cv2.inRange(hsv, self.healthy_green_range['lower'], self.healthy_green_range['upper'])
-            green_pixels = cv2.countNonZero(green_mask)
-            green_percentage = green_pixels / total_pixels
-            
+            green_percentage = cv2.countNonZero(green_mask) / total_pixels
+
             # Dead brown pixels
             brown_mask = cv2.inRange(hsv, self.dead_brown_range['lower'], self.dead_brown_range['upper'])
-            brown_pixels = cv2.countNonZero(brown_mask)
-            brown_percentage = brown_pixels / total_pixels
-            
-            # Diseased yellow pixels
+            brown_percentage = cv2.countNonZero(brown_mask) / total_pixels
+
+            # Diseased / yellowing pixels
             yellow_mask = cv2.inRange(hsv, self.diseased_yellow_range['lower'], self.diseased_yellow_range['upper'])
-            yellow_pixels = cv2.countNonZero(yellow_mask)
-            yellow_percentage = yellow_pixels / total_pixels
-            
-            # Additional features
-            brightness = np.mean(hsv[:, :, 2])  # Value channel
-            saturation = np.mean(hsv[:, :, 1])  # Saturation channel
-            
-            # Classification logic
-            if green_percentage > 0.3 and brightness > 80 and saturation > 50:
-                # Healthy tree: good green coverage, bright, saturated
-                confidence = min(0.9, 0.5 + green_percentage + (brightness / 255) * 0.2 + (saturation / 255) * 0.2)
+            yellow_percentage = cv2.countNonZero(yellow_mask) / total_pixels
+
+            # Stressed / pale-green pixels (low saturation green = early disease or water stress)
+            stressed_mask = cv2.inRange(hsv, self.stressed_green_range['lower'], self.stressed_green_range['upper'])
+            stressed_percentage = cv2.countNonZero(stressed_mask) / total_pixels
+
+            # Per-pixel mean brightness and saturation
+            brightness = float(np.mean(hsv[:, :, 2]))
+            saturation = float(np.mean(hsv[:, :, 1]))
+
+            # --- Decision tree ---
+
+            # ALIVE: substantial saturated green present
+            if green_percentage > 0.25 and brightness > 60 and saturation > 40:
+                confidence = round(
+                    min(0.92, 0.55 + green_percentage * 0.25
+                        + saturation / 255 * 0.10
+                        + brightness / 255 * 0.07),
+                    3,
+                )
                 return TreeStatus.ALIVE, confidence
-            
-            elif brown_percentage > 0.2 or brightness < 50:
-                # Dead tree: significant brown coverage or very dark
-                confidence = min(0.9, 0.5 + brown_percentage + (1 - brightness / 255) * 0.3)
+
+            # DEAD: dominated by brown OR very dark with almost no green
+            elif brown_percentage > 0.25 or (brightness < 45 and green_percentage < 0.10):
+                confidence = round(
+                    min(0.92, 0.55 + brown_percentage * 0.25
+                        + (1 - brightness / 255) * 0.07),
+                    3,
+                )
                 return TreeStatus.DEAD, confidence
-            
-            elif yellow_percentage > 0.15 or (green_percentage < 0.2 and saturation < 30):
-                # Diseased tree: yellow coloration or low green with low saturation
-                confidence = min(0.9, 0.5 + yellow_percentage + (1 - saturation / 255) * 0.2)
+
+            # DISEASED: yellowing foliage OR stressed pale-green cover
+            elif yellow_percentage > 0.10 or stressed_percentage > 0.20:
+                combined = max(yellow_percentage, stressed_percentage)
+                confidence = round(min(0.85, 0.55 + combined * 0.20), 3)
                 return TreeStatus.DISEASED, confidence
-            
+
+            # Low-confidence ALIVE: mixed scene, some green present but not dominant
             else:
-                # Default to alive with lower confidence
-                confidence = 0.6
+                confidence = round(0.55 + green_percentage * 0.10, 3)
                 return TreeStatus.ALIVE, confidence
                 
         except Exception as e:
@@ -222,14 +243,14 @@ class TreeHealthClassifier:
             Path to saved proof image or None if failed
         """
         try:
-            # Create proof images directory
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            proof_dir = os.path.join(settings.static_dir, "proof_images", timestamp)
+            # Single flat directory — keyed by status, filename includes tree_id + timestamp
+            proof_dir = os.path.join(settings.static_dir, "proof_images")
             os.makedirs(proof_dir, exist_ok=True)
-            
+
             # Generate filename
             status_str = status.value.lower()
-            filename = f"{status_str}_{tree_id:03d}.jpg"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{status_str}_{tree_id:03d}_{timestamp}.jpg"
             filepath = os.path.join(proof_dir, filename)
             
             # Save image

@@ -65,12 +65,18 @@ class TaskManager:
             # Store task
             self.active_tasks[task_id] = task_status
             
-            # Add to processing queue
-            await self.queue.put({
-                'task_id': task_id,
-                'image_path': image_path,
-                'patch_id': patch_id
-            })
+            # Add to processing queue — fail fast if the queue is full
+            try:
+                self.queue.put_nowait({
+                    'task_id': task_id,
+                    'image_path': image_path,
+                    'patch_id': patch_id,
+                })
+            except asyncio.QueueFull:
+                del self.active_tasks[task_id]
+                raise RuntimeError(
+                    "Processing queue is full — server is busy, please retry later"
+                )
             
             logger.info(f"Task {task_id} submitted for processing")
             return task_status
@@ -157,7 +163,12 @@ class TaskManager:
         
         try:
             logger.info(f"Worker {worker_name} processing task {task_id}")
-            
+
+            # Guard: skip if the task was cancelled before the worker picked it up
+            if task_id in self.active_tasks and self.active_tasks[task_id].status == "cancelled":
+                logger.info(f"Task {task_id} was cancelled before processing — skipping")
+                return
+
             # Update task status to processing
             if task_id in self.active_tasks:
                 self.active_tasks[task_id].status = "processing"
@@ -168,7 +179,7 @@ class TaskManager:
             start_time = datetime.utcnow()
             
             # Run ML processing in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 None, 
                 self.ml_processor.process_image, 
@@ -183,7 +194,8 @@ class TaskManager:
                 self.active_tasks[task_id].progress = 0.8
                 self.active_tasks[task_id].updated_at = datetime.utcnow()
             
-            # Save results
+            if result is None:
+                raise ValueError("ML processor returned None — image may be corrupt or unreadable")
             await self.data_manager.save_processing_result(result)
             
             # Update task status to completed

@@ -78,14 +78,15 @@ function ComparisonSlider({
         if (!patchData || !patchData.trees) return [];
 
         // Default to a 4:3 aspect ratio coordinate system if dimensions are missing
-        const imgWidth = (patchData.metadata as any)?.dimensions?.[0] || 4000;
-        const imgHeight = (patchData.metadata as any)?.dimensions?.[1] || 3000;
+        const imgWidth = patchData.metadata?.dimensions?.[0] || 4000;
+        const imgHeight = patchData.metadata?.dimensions?.[1] || 3000;
 
         return patchData.trees.map(tree => ({
             id: tree.tree_id,
             x: (tree.bbox.x / imgWidth) * 100,
             y: (tree.bbox.y / imgHeight) * 100,
-            status: tree.health_status === 'healthy' ? 'alive' : 'dead'
+            // Use correct backend field: 'status' is uppercase ALIVE/DEAD/DISEASED
+            status: (tree.status || '').toUpperCase() === 'ALIVE' ? 'alive' : 'dead'
         }));
     };
 
@@ -377,7 +378,10 @@ export default function TemporalComparisonPage() {
 
     useEffect(() => {
         async function loadData() {
-            if (!patchId) return;
+            if (!patchId) {
+                setLoading(false); // stop spinner — nothing to load
+                return;
+            }
             setLoading(true);
             try {
                 const data = await api.getPatchDetails(patchId);
@@ -391,7 +395,7 @@ export default function TemporalComparisonPage() {
         loadData();
     }, [patchId]);
 
-    const imageUrl = patchData?.metadata?.filename ? api.getImageUrl(patchData.metadata.filename) : undefined;
+    const imageUrl = patchData?.metadata?.filename ? api.getImageUrl(patchData.metadata.filename as string) : undefined;
     const stageData = {
         op1: { label: 'T-2', date: 'Historical' },
         op2: { label: 'T-1', date: 'Previous' },
@@ -399,6 +403,29 @@ export default function TemporalComparisonPage() {
     };
 
     const currentStage = stageData[selectedStage as keyof typeof stageData];
+
+    // Show empty state when no patch is selected
+    if (!loading && !patchId) {
+        return (
+            <div className="h-screen flex flex-col items-center justify-center bg-background gap-6">
+                <div className="w-20 h-20 rounded-2xl gradient-forest flex items-center justify-center">
+                    <Layers className="w-10 h-10 text-white" />
+                </div>
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold mb-2">No Patch Selected</h2>
+                    <p className="text-muted-foreground max-w-sm">
+                        Navigate to the Patch Explorer, select a patch, and open it in the Temporal View.
+                    </p>
+                </div>
+                <Link href="/dashboard/explorer">
+                    <Button className="bg-forest hover:bg-forest/90">
+                        <ArrowLeft className="w-4 h-4 mr-2" />
+                        Go to Patch Explorer
+                    </Button>
+                </Link>
+            </div>
+        );
+    }
 
     return (
         <div className="h-screen flex flex-col bg-background">

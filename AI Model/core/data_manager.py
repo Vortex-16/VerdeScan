@@ -86,43 +86,30 @@ class DataManager:
     async def get_patch_data(self, patch_id: str) -> Optional[Dict[str, Any]]:
         """
         Get data for a specific patch.
-        
-        Args:
-            patch_id: Patch identifier
-            
-        Returns:
-            Patch data dictionary or None if not found
         """
         try:
-            data = await self._load_results_data()
+            async with self._lock:
+                data = await self._load_results_data()
             return data.get(patch_id)
         except Exception as e:
             logger.error(f"Error getting patch data for {patch_id}: {e}")
             return None
     
     async def get_all_patches(self) -> List[str]:
-        """
-        Get list of all patch IDs.
-        
-        Returns:
-            List of patch identifiers
-        """
+        """Get list of all patch IDs."""
         try:
-            data = await self._load_results_data()
+            async with self._lock:
+                data = await self._load_results_data()
             return list(data.keys())
         except Exception as e:
             logger.error(f"Error getting patch list: {e}")
             return []
     
     async def get_global_statistics(self) -> Dict[str, Any]:
-        """
-        Get global statistics across all patches.
-        
-        Returns:
-            Dictionary with global statistics
-        """
+        """Get global statistics across all patches."""
         try:
-            data = await self._load_results_data()
+            async with self._lock:
+                data = await self._load_results_data()
             
             if not data:
                 return {
@@ -169,36 +156,53 @@ class DataManager:
             return {"error": str(e)}
 
     async def get_all_results(self) -> List[Dict[str, Any]]:
-        """
-        Get all processing results.
-        
-        Returns:
-            List of all processing results
-        """
+        """Get all processing results, each with patch_id injected inside the object."""
         try:
-            data = await self._load_results_data()
-            return list(data.values())
+            async with self._lock:
+                data = await self._load_results_data()
+                items = list(data.items())  # snapshot while lock is held — prevents dict-changed-during-iteration
+            results = []
+            for patch_id, patch_data in items:
+                entry = dict(patch_data)
+                entry["patch_id"] = patch_id
+                # Alias: frontend expects 'trees' but we store as 'details'
+                if "details" in entry and "trees" not in entry:
+                    entry["trees"] = entry["details"]
+                results.append(entry)
+            return results
         except Exception as e:
             logger.error(f"Error getting all results: {e}")
             return []
     
     async def _load_results_data(self) -> Dict[str, Any]:
-        """Load existing results data from file with caching."""
+        """Load existing results data from file with caching. Must be called while holding self._lock."""
         try:
             if not os.path.exists(self.results_file):
                 return {}
-                
+
             current_mtime = os.path.getmtime(self.results_file)
-            
+
             # Return cached data if file hasn't changed
             if self._cache is not None and current_mtime <= self._cache_mtime:
                 return self._cache
-                
+
             async with aiofiles.open(self.results_file, 'r') as f:
                 content = await f.read()
+
+            try:
                 self._cache = json.loads(content)
-                self._cache_mtime = current_mtime
-                return self._cache
+            except json.JSONDecodeError as exc:
+                import shutil
+                backup = self.results_file + '.corrupt'
+                shutil.copy2(self.results_file, backup)
+                logger.error(
+                    f"results.json is corrupted ({exc}) — "
+                    f"backed up to {backup!r} and starting fresh"
+                )
+                self._cache = {}
+
+            self._cache_mtime = current_mtime
+            return self._cache
         except Exception as e:
             logger.warning(f"Error loading results data: {e}")
             return {}
@@ -303,11 +307,12 @@ class DataManager:
                 
                 csv_data.append(row)
             
-            # Create DataFrame and save
+            # Create DataFrame and save asynchronously (avoid blocking event loop)
             df = pd.DataFrame(csv_data)
             safe_patch_id = self._sanitize_filename(result.patch_id)
             csv_path = os.path.join(settings.data_dir, "exports", f"results_{safe_patch_id}.csv")
-            df.to_csv(csv_path, index=False)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: df.to_csv(csv_path, index=False))
             
             logger.info(f"Saved CSV export for patch {result.patch_id}")
             

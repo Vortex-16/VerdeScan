@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { gsap } from 'gsap';
 import {
     Map,
     Search,
@@ -16,32 +15,20 @@ import {
     CheckCircle2,
     XCircle,
     HelpCircle,
-    ChevronDown,
-    ChevronRight,
     X,
     Copy,
     ExternalLink,
-    Navigation,
     Leaf,
-    Home,
-    BarChart3,
-    FileText,
-    Settings,
-    Menu,
-    Bell,
-    Calendar,
-    ArrowLeft,
     Eye,
-    RefreshCw
+    RefreshCw,
+    ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, TreeDetail } from '@/lib/api';
 
 // Patch interface based on real API data
 interface PatchInfo {
@@ -57,11 +44,22 @@ interface PatchInfo {
     imageDimensions?: [number, number];
 }
 
+// TreeInfo maps from backend TreeDetail
 interface TreeInfo {
     id: string;
+    /** lowercase for display: 'alive' | 'dead' | 'uncertain' */
     status: 'alive' | 'dead' | 'uncertain';
     confidence: number;
     bbox: { x: number; y: number; width: number; height: number };
+}
+
+/** Map backend uppercase status to display lowercase */
+function mapStatus(backendStatus: string): 'alive' | 'dead' | 'uncertain' {
+    const s = (backendStatus || '').toUpperCase();
+    if (s === 'ALIVE') return 'alive';
+    if (s === 'DEAD') return 'dead';
+    if (s === 'DISEASED') return 'uncertain'; // treat diseased as uncertain for display
+    return 'uncertain';
 }
 
 // Sapling Inspection Panel
@@ -222,13 +220,20 @@ function SaplingPanel({ sapling, onClose }: { sapling: TreeInfo | null; onClose:
     );
 }
 
-// Filter Sidebar
-function FilterSidebar() {
-    const [yearFilter, setYearFilter] = useState('all');
-    const [survivalRange, setSurvivalRange] = useState([0, 100]);
-    const [statusFilters, setStatusFilters] = useState({ critical: true, warning: true, healthy: true });
-    const [districtFilters, setDistrictFilters] = useState({ khordha: true, cuttack: true, puri: true, mayurbhanj: true });
+interface FilterState {
+    search: string;
+    survivalRange: [number, number];
+    statusFilters: { critical: boolean; warning: boolean; healthy: boolean };
+}
 
+// Filter Sidebar
+function FilterSidebar({
+    filters,
+    onChange,
+}: {
+    filters: FilterState;
+    onChange: (f: FilterState) => void;
+}) {
     return (
         <div className="w-64 bg-card border-r border-border h-full overflow-y-auto">
             <div className="p-4 space-y-6">
@@ -237,50 +242,27 @@ function FilterSidebar() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <input
                         type="text"
-                        placeholder="Search patch ID..."
+                        placeholder="Search patch ID…"
+                        value={filters.search}
+                        onChange={(e) => onChange({ ...filters, search: e.target.value })}
                         className="w-full h-10 pl-10 pr-4 bg-muted/50 rounded-xl border-0 focus:ring-2 focus:ring-forest/50 focus:outline-none text-sm"
                     />
-                </div>
-
-                {/* Year Filter */}
-                <div>
-                    <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        Year Filter
-                    </h4>
-                    <div className="space-y-2">
-                        {['all', '2024', '2025', '2026'].map((year) => (
-                            <label key={year} className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                    type="radio"
-                                    name="year"
-                                    value={year}
-                                    checked={yearFilter === year}
-                                    onChange={(e) => setYearFilter(e.target.value)}
-                                    className="w-4 h-4 text-forest focus:ring-forest"
-                                />
-                                <span className="text-sm group-hover:text-forest transition-colors">
-                                    {year === 'all' ? 'All Years' : `Year ${year.slice(-1)} (${year})`}
-                                </span>
-                            </label>
-                        ))}
-                    </div>
                 </div>
 
                 {/* Survival Range */}
                 <div>
                     <h4 className="text-sm font-medium mb-3">Survival Range</h4>
                     <Slider
-                        value={survivalRange}
-                        onValueChange={setSurvivalRange}
+                        value={filters.survivalRange}
+                        onValueChange={(v) => onChange({ ...filters, survivalRange: v as [number, number] })}
                         min={0}
                         max={100}
                         step={1}
                         className="mb-2"
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{survivalRange[0]}%</span>
-                        <span>{survivalRange[1]}%</span>
+                        <span>{filters.survivalRange[0]}%</span>
+                        <span>{filters.survivalRange[1]}%</span>
                     </div>
                 </div>
 
@@ -288,45 +270,42 @@ function FilterSidebar() {
                 <div>
                     <h4 className="text-sm font-medium mb-3">Status</h4>
                     <div className="space-y-2">
-                        {[
+                        {([
                             { key: 'critical', label: 'Critical', color: 'bg-dead' },
-                            { key: 'warning', label: 'Warning', color: 'bg-uncertain' },
-                            { key: 'healthy', label: 'Healthy', color: 'bg-alive' },
-                        ].map((status) => (
-                            <label key={status.key} className="flex items-center gap-2 cursor-pointer">
+                            { key: 'warning',  label: 'Warning',  color: 'bg-uncertain' },
+                            { key: 'healthy',  label: 'Healthy',  color: 'bg-alive' },
+                        ] as const).map((s) => (
+                            <label key={s.key} className="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={statusFilters[status.key as keyof typeof statusFilters]}
-                                    onChange={(e) => setStatusFilters({ ...statusFilters, [status.key]: e.target.checked })}
+                                    checked={filters.statusFilters[s.key]}
+                                    onChange={(e) =>
+                                        onChange({
+                                            ...filters,
+                                            statusFilters: { ...filters.statusFilters, [s.key]: e.target.checked },
+                                        })
+                                    }
                                     className="w-4 h-4 rounded text-forest focus:ring-forest"
                                 />
-                                <span className={`w-2 h-2 rounded-full ${status.color}`} />
-                                <span className="text-sm">{status.label}</span>
+                                <span className={`w-2 h-2 rounded-full ${s.color}`} />
+                                <span className="text-sm">{s.label}</span>
                             </label>
                         ))}
                     </div>
                 </div>
 
-                {/* District Filter */}
-                <div>
-                    <h4 className="text-sm font-medium mb-3">District</h4>
-                    <div className="space-y-2">
-                        {['khordha', 'cuttack', 'puri', 'mayurbhanj'].map((district) => (
-                            <label key={district} className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={districtFilters[district as keyof typeof districtFilters]}
-                                    onChange={(e) => setDistrictFilters({ ...districtFilters, [district]: e.target.checked })}
-                                    className="w-4 h-4 rounded text-forest focus:ring-forest"
-                                />
-                                <span className="text-sm capitalize">{district}</span>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Reset Filters */}
-                <Button variant="outline" className="w-full">
+                {/* Reset */}
+                <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() =>
+                        onChange({
+                            search: '',
+                            survivalRange: [0, 100],
+                            statusFilters: { critical: true, warning: true, healthy: true },
+                        })
+                    }
+                >
                     Reset Filters
                 </Button>
             </div>
@@ -587,6 +566,11 @@ export default function PatchExplorerPage() {
     const [selectedSapling, setSelectedSapling] = useState<TreeInfo | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [filters, setFilters] = useState<FilterState>({
+        search: '',
+        survivalRange: [0, 100],
+        statusFilters: { critical: true, warning: true, healthy: true },
+    });
 
     // Fetch patches from API
     useEffect(() => {
@@ -595,31 +579,38 @@ export default function PatchExplorerPage() {
             try {
                 const allDetails = await api.getAllPatchDetails();
 
-                const patchData = allDetails.map((details) => {
+                const patchData: PatchInfo[] = allDetails.map((details) => {
                     const name = details.patch_id;
-                    const trees = details.trees || [];
-                    const alive = trees.filter((t: any) => t.classification === 'sapling' || t.health_status === 'healthy').length;
-                    const dead = trees.filter((t: any) => t.health_status === 'dead' || t.health_status === 'unhealthy').length;
+                    const trees: TreeDetail[] = details.trees || [];
+
+                    // Use correct field: 'status' (ALIVE/DEAD/DISEASED)
+                    const alive = trees.filter((t) => (t.status || '').toUpperCase() === 'ALIVE').length;
+                    const dead  = trees.filter((t) => ['DEAD', 'DISEASED'].includes((t.status || '').toUpperCase())).length;
                     const total = trees.length;
                     const survivalRate = total > 0 ? (alive / total) * 100 : 0;
 
+                    const patchStatus: 'healthy' | 'warning' | 'critical' =
+                        survivalRate >= 85 ? 'healthy' : survivalRate >= 70 ? 'warning' : 'critical';
+
                     return {
                         id: name,
-                        name: name,
-                        survival: survivalRate,
+                        name,
+                        survival: parseFloat(survivalRate.toFixed(1)),
                         planted: total,
-                        alive: alive,
-                        dead: dead,
-                        status: survivalRate >= 85 ? 'healthy' : survivalRate >= 70 ? 'warning' : 'critical',
-                        trees: trees.map((t: any, i: number) => ({
-                            id: t.tree_id || `TREE-${i}`,
-                            status: t.health_status === 'healthy' ? 'alive' : t.health_status === 'dead' ? 'dead' : 'uncertain',
-                            confidence: (t.classification_confidence || 0.8) * 100,
-                            bbox: t.bbox || { x: 0, y: 0, width: 50, height: 50 }
+                        alive,
+                        dead,
+                        status: patchStatus,
+                        trees: trees.map((t, i) => ({
+                            id: String(t.tree_id ?? `TREE-${i}`),
+                            status: mapStatus(t.status),
+                            confidence: (t.classification_confidence ?? t.detection_confidence ?? 0.8) * 100,
+                            bbox: t.bbox ?? { x: 0, y: 0, width: 50, height: 50 },
                         })),
-                        imageUrl: (details as any).metadata?.filename ? api.getImageUrl((details as any).metadata.filename) : undefined,
-                        imageDimensions: (details as any).metadata?.dimensions
-                    } as PatchInfo;
+                        imageUrl: details.metadata?.filename
+                            ? api.getImageUrl(details.metadata.filename)
+                            : undefined,
+                        imageDimensions: details.metadata?.dimensions,
+                    };
                 });
 
                 setPatches(patchData);
@@ -631,7 +622,14 @@ export default function PatchExplorerPage() {
         fetchPatches();
     }, []);
 
-    // Convert trees to sapling format for MapView
+    // Apply filters
+    const filteredPatches = patches.filter((p) => {
+        if (filters.search && !p.id.toLowerCase().includes(filters.search.toLowerCase())) return false;
+        if (p.survival < filters.survivalRange[0] || p.survival > filters.survivalRange[1]) return false;
+        if (!filters.statusFilters[p.status]) return false;
+        return true;
+    });
+
     const saplings = selectedPatch?.trees || [];
 
     return (
@@ -654,7 +652,7 @@ export default function PatchExplorerPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{patches.length} Patches</Badge>
+                    <Badge variant="secondary">{filteredPatches.length}/{patches.length} Patches</Badge>
                     <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
                         <Filter className="w-5 h-5" />
                     </Button>
@@ -673,14 +671,14 @@ export default function PatchExplorerPage() {
                             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                             className="absolute left-0 top-0 bottom-0 z-20"
                         >
-                            <FilterSidebar />
+                            <FilterSidebar filters={filters} onChange={setFilters} />
                         </motion.div>
                     )}
                 </AnimatePresence>
 
                 {/* Map View */}
                 <MapView
-                    patches={patches}
+                    patches={filteredPatches}
                     saplings={saplings}
                     selectedPatch={selectedPatch}
                     onSelectPatch={setSelectedPatch}

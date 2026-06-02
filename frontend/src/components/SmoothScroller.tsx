@@ -22,24 +22,16 @@ export default function SmoothScroller() {
     // Sync Lenis with GSAP ScrollTrigger
     lenis.on("scroll", ScrollTrigger.update);
 
-    gsap.ticker.add((time) => {
+    // Tick Lenis via GSAP ticker ONLY — no separate rAF loop to avoid double-ticking
+    const ticker = (time: number) => {
       lenis.raf(time * 1000);
-    });
-
+    };
+    gsap.ticker.add(ticker);
     gsap.ticker.lagSmoothing(0);
-
-    // RAF loop
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-    requestAnimationFrame(raf);
 
     return () => {
       lenis.destroy();
-      gsap.ticker.remove((time) => {
-        lenis.raf(time * 1000);
-      });
+      gsap.ticker.remove(ticker);
     };
   }, []);
 

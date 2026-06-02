@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { gsap } from 'gsap';
+import { motion } from 'framer-motion';
 import {
     TreePine,
-    Leaf,
     Map,
     BarChart3,
     Bell,
@@ -18,26 +16,19 @@ import {
     AlertTriangle,
     CheckCircle2,
     XCircle,
-    HelpCircle,
     Eye,
     MapPin,
-    Clock,
-    Settings,
     Menu,
-    X,
-    ChevronDown,
     ArrowUpRight,
-    Layers,
     FileText,
-    Home
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { api, GlobalStats } from '@/lib/api';
+import { useCounter } from '@/hooks/useCounter';
+import DashboardSidebar from '@/components/DashboardSidebar';
 
 // Interface for patch alerts
 interface PatchAlert {
@@ -47,49 +38,6 @@ interface PatchAlert {
     survival: number;
     status: 'critical' | 'warning' | 'healthy';
     lastSurvey: string;
-}
-
-// Reusable counter hook
-function useCounter(target: number, duration: number = 2000) {
-    const [count, setCount] = useState(0);
-    const ref = useRef<HTMLSpanElement>(null);
-    const hasAnimated = useRef(false);
-
-    useEffect(() => {
-        // Reset animation state when target changes
-        hasAnimated.current = false;
-        setCount(0);
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting) {
-                    hasAnimated.current = true;
-                    const startTime = Date.now();
-                    const animate = () => {
-                        const elapsed = Date.now() - startTime;
-                        const progress = Math.min(elapsed / duration, 1);
-                        const eased = 1 - Math.pow(1 - progress, 3);
-                        setCount(Math.floor(eased * target));
-                        if (progress < 1) {
-                            requestAnimationFrame(animate);
-                        } else {
-                            setCount(target); // Ensure final value is exact
-                        }
-                    };
-                    animate();
-                }
-            },
-            { threshold: 0.5 }
-        );
-
-        if (ref.current) {
-            observer.observe(ref.current);
-        }
-
-        return () => observer.disconnect();
-    }, [target, duration]);
-
-    return { count, ref };
 }
 
 // Format large numbers (Indian format: Cr, Lakh)
@@ -394,20 +342,46 @@ function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
 
         setUploading(true);
         setError('');
-        setStatus('Uploading...');
+        setStatus('Uploading…');
 
         const result = await api.uploadImage(file, patchName);
-        if (result) {
-            setStatus('✅ Upload Complete! AI Processing...');
-            setTimeout(() => {
-                setStatus('✅ Analysis Complete!');
+        if (!result) {
+            setError('Upload failed — server may be unavailable');
+            setUploading(false);
+            return;
+        }
+
+        setStatus('Queued — AI processing…');
+        const taskId = result.task_id;
+        const deadline = Date.now() + 120_000; // 2-minute hard timeout
+
+        while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 2000));
+            const taskStatus = await api.getTaskStatus(taskId);
+            if (!taskStatus) continue;
+
+            if (taskStatus.status === 'completed') {
+                setStatus('✅ Analysis complete!');
                 setUploading(false);
                 onUploadComplete();
-            }, 3000);
-        } else {
-            setError('Upload failed');
-            setUploading(false);
+                return;
+            }
+            if (taskStatus.status === 'failed') {
+                setError(`Processing failed: ${taskStatus.error_message ?? 'Unknown error'}`);
+                setUploading(false);
+                return;
+            }
+            if (taskStatus.status === 'cancelled') {
+                setError('Task was cancelled.');
+                setUploading(false);
+                return;
+            }
+            const pct = Math.round(((taskStatus.progress as number) ?? 0) * 100);
+            if (pct > 0) setStatus(`AI processing… ${pct}%`);
         }
+
+        setError('Processing timed out — check back later.');
+        setUploading(false);
     };
 
     return (
@@ -456,101 +430,6 @@ function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
                 </CardContent>
             </Card>
         </motion.div>
-    );
-}
-
-// Sidebar Component
-function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-    const links = [
-        { icon: Home, label: 'Dashboard', href: '/dashboard', active: true },
-        { icon: Map, label: 'Patch Explorer', href: '/dashboard/explorer' },
-        { icon: Layers, label: 'Temporal View', href: '/dashboard/temporal' },
-        { icon: BarChart3, label: 'Analytics', href: '/dashboard/analytics' },
-        { icon: FileText, label: 'Reports', href: '/dashboard/reports' },
-        { icon: Settings, label: 'Settings', href: '/dashboard/settings' },
-    ];
-
-    return (
-        <>
-            {/* Mobile overlay */}
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={onClose}
-                        className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-                    />
-                )}
-            </AnimatePresence>
-
-            {/* Sidebar - Desktop (Static) */}
-            <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border z-30">
-                <SidebarContent links={links} />
-            </aside>
-
-            {/* Sidebar - Mobile (Animated) */}
-            <motion.aside
-                initial={{ x: -300 }}
-                animate={{ x: isOpen ? 0 : -300 }}
-                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border z-50 lg:hidden"
-            >
-                <div className="flex flex-col h-full relative">
-                    <Button variant="ghost" size="icon" className="absolute top-4 right-4 lg:hidden" onClick={onClose}>
-                        <X className="w-5 h-5" />
-                    </Button>
-                    <SidebarContent links={links} />
-                </div>
-            </motion.aside>
-        </>
-    );
-}
-
-function SidebarContent({ links }: { links: any[] }) {
-    return (
-        <div className="flex flex-col h-full">
-            {/* Logo */}
-            <div className="h-16 flex items-center px-6 border-b border-border">
-                <Link href="/" className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg gradient-forest flex items-center justify-center">
-                        <Leaf className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-lg font-bold text-gradient">VerdeScan</span>
-                </Link>
-            </div>
-
-            {/* Navigation */}
-            <nav className="flex-1 p-4 space-y-1">
-                {links.map((link) => (
-                    <Link
-                        key={link.label}
-                        href={link.href}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${link.active
-                            ? 'bg-forest text-white shadow-lg shadow-forest/25'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                            }`}
-                    >
-                        <link.icon className={`w-5 h-5 ${link.active ? '' : 'group-hover:scale-110'} transition-transform`} />
-                        <span className="font-medium">{link.label}</span>
-                    </Link>
-                ))}
-            </nav>
-
-            {/* User section */}
-            <div className="p-4 border-t border-border">
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/50 border border-border/50">
-                    <div className="w-10 h-10 rounded-full bg-forest/10 flex items-center justify-center">
-                        <span className="text-forest font-semibold text-sm">FO</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">Forest Officer</p>
-                        <p className="text-xs text-muted-foreground truncate">Khordha Division</p>
-                    </div>
-                </div>
-            </div>
-        </div>
     );
 }
 
@@ -631,7 +510,7 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-background">
             {/* Sidebar */}
-            <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+            <DashboardSidebar activePage="Dashboard" isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
             {/* Main content */}
             <div className="lg:pl-64">
