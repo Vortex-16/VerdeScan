@@ -47,15 +47,21 @@ python build_dataset_v2.py
 
 ### 3. Train the model
 ```bash
-python train_improved.py --dataset processed_dataset_v2
+python train_improved.py --dataset processed_dataset_v2 --batch 128 --num-workers 6 --cache
 # Val accuracy: 99.9%  |  3 classes: alive / dead / no_sapling
 # Saves: ml_models/forest_model_improved.pth
+#        ml_models/forest_model_improved.json  (metadata sidecar)
 ```
 
 Deploy the trained model:
 ```bash
 cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
+cp ml_models/forest_model_improved.json ml_models/forest_model.json
 ```
+
+> **Pre-trained weights available on Kaggle** — skip steps 2–3 if you don't have the raw imagery:
+> - Model: [dealer09/verdescan-forest-model](https://www.kaggle.com/models/dealer09/verdescan-forest-model)
+> - Dataset: [dealer09/verdescan-afforestation-tiles](https://www.kaggle.com/datasets/dealer09/verdescan-afforestation-tiles)
 
 ### 4. Run the orthomosaic survival pipeline
 ```bash
@@ -95,6 +101,15 @@ Dashboard: http://localhost:3000 | API docs: http://localhost:8000/docs
 | `/api/stats` | GET | Global statistics |
 | `/api/export/{patch_id}` | GET | Download CSV |
 | `/health` | GET | System health check |
+
+---
+
+## Kaggle Resources
+
+| Resource | Link |
+|----------|------|
+| **Trained Model** | [dealer09/verdescan-forest-model](https://www.kaggle.com/models/dealer09/verdescan-forest-model) |
+| **Training Dataset** (15k tiles) | [dealer09/verdescan-afforestation-tiles](https://www.kaggle.com/datasets/dealer09/verdescan-afforestation-tiles) |
 
 ---
 
@@ -148,6 +163,7 @@ AI Model/
 | `MAX_FILE_SIZE` | 10485760 | Upload limit (10 MB) |
 | `DETECTION_CONFIDENCE_THRESHOLD` | 0.2 | CNN detection minimum confidence |
 | `GEMINI_API_KEY` | None | Optional Gemini Vision enhancement |
+| `GEMINI_MODEL` | gemini-1.5-flash | Gemini model (vision-capable) |
 | `LOG_LEVEL` | INFO | Logging verbosity |
 
 Copy `.env.example` to `.env` and set values as needed.

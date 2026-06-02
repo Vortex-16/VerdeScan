@@ -116,6 +116,22 @@ This matches the problem statement: *"use coordinate information from OP1 images
 
 ---
 
+## Kaggle Resources
+
+| Resource | Link |
+|----------|------|
+| **Trained Model** (ResNet18, 3-class, 99.9% val acc) | [dealer09/verdescan-forest-model](https://www.kaggle.com/models/dealer09/verdescan-forest-model) |
+| **Training Dataset** (15,000 tiles — alive / dead / no_sapling) | [dealer09/verdescan-afforestation-tiles](https://www.kaggle.com/datasets/dealer09/verdescan-afforestation-tiles) |
+
+Download the pre-trained model directly instead of training from scratch:
+```bash
+# Using Kaggle API
+kaggle models instances versions download dealer09/verdescan-forest-model/pyTorch/default
+mv *.pth "AI Model/ml_models/forest_model.pth"
+```
+
+---
+
 ## Running the System
 
 ### Prerequisites
@@ -153,8 +169,14 @@ Load in Google Earth or QGIS to verify against ground truth.
 ### 4. (Re)train the model
 ```bash
 cd "AI Model"
+# Option A — use the Kaggle dataset directly:
+#   kaggle datasets download dealer09/verdescan-afforestation-tiles
+#   unzip verdescan-afforestation-tiles.zip -d processed_dataset_v2
+
+# Option B — build from your own raw imagery:
 python build_dataset_v2.py           # build 15k-tile dataset from raw imagery
-python train_improved.py --dataset processed_dataset_v2
+
+python train_improved.py --dataset processed_dataset_v2 --batch 128 --num-workers 6 --cache
 cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
 ```
 

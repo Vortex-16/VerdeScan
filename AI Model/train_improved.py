@@ -12,7 +12,8 @@ Key improvements over train_forest_model.py:
   7. Saves best checkpoint (not just last epoch)
 """
 
-import os, re, random, time
+import os, re, random, time, json
+from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
@@ -183,6 +184,7 @@ def main():
     CACHE_RAM    = args.cache
     PATIENCE     = 5
     VAL_FRAC     = 0.20
+    META_PATH    = str(SCRIPT_DIR / "ml_models" / "forest_model_improved.json")
 
     # ── Hardware summary ──────────────────────────────────────────────────
     print(f"Workers : {NUM_WORKERS}  |  RAM cache: {'ON' if CACHE_RAM else 'OFF'}")
@@ -304,7 +306,26 @@ def main():
             best_val_loss = val_loss
             stale = 0
             torch.save(model.state_dict(), SAVE_PATH)
-            print(f"  [best] saved to {SAVE_PATH}")
+            # ── metadata sidecar (Bug #7 fix) ────────────────────────────────
+            # Saved alongside the .pth so the server can read arch/classes
+            # without loading the full weights.
+            meta = {
+                "architecture":   "resnet18",
+                "num_classes":    len(class_names),
+                "class_names":    class_names,
+                "val_accuracy":   round(float(val_acc), 6),
+                "best_val_loss":  round(float(val_loss), 6),
+                "epoch":          epoch,
+                "batch_size":     BATCH,
+                "learning_rate":  LR,
+                "dataset":        args.dataset,
+                "trained_at":     datetime.utcnow().isoformat() + "Z",
+                "checkpoint":     os.path.basename(SAVE_PATH),
+                "amp":            use_amp,
+            }
+            with open(META_PATH, "w") as f:
+                json.dump(meta, f, indent=2)
+            print(f"  [best] saved checkpoint + metadata sidecar")
         else:
             stale += 1
             if stale >= PATIENCE:

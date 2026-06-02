@@ -137,17 +137,28 @@ class MLProcessor(ABC):
 class GeminiIntegration:
     """Integration with Google Gemini API for enhanced tree analysis."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-pro-vision"):
+    # gemini-pro-vision deprecated Apr 2025; gemini-1.5-flash superseded by 2.5.
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
         """
         Initialize Gemini integration.
-        
+
         Args:
             api_key: Google AI API key
-            model: Gemini model to use
+            model: Gemini model to use (must support vision input)
         """
+        # Guard against stale model names
+        _outdated = {"gemini-pro-vision", "gemini-1.5-flash", "gemini-1.5-pro"}
+        if model in _outdated:
+            import warnings
+            warnings.warn(
+                f"{model!r} is outdated. Switching to gemini-2.5-flash automatically.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            model = "gemini-2.5-flash"
         self.api_key = api_key
-        self.model = model
-        self.client = None
+        self.model   = model
+        self.client  = None
         
         if api_key:
             try:
