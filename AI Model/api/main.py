@@ -80,6 +80,61 @@ STATIC_DIR = settings.static_dir
 DATA_DIR = settings.data_dir
 FRONTEND_DIR = os.path.join(REPO_DIR, "frontend")
 
+
+def _pid_alive(pid: int) -> bool:
+    """Cross-platform 'is this process still running?' check."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        # NB: os.kill(pid, 0) on Windows TERMINATES the process — never use it.
+        # Query liveness via OpenProcess + GetExitCodeProcess instead.
+        import ctypes
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        k32 = ctypes.windll.kernel32
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            if not k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == STILL_ACTIVE
+        finally:
+            k32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True   # exists but owned by another user
+    return True
+
+
+def _pipeline_running(flag_path: str) -> bool:
+    """
+    A site is genuinely running only if its `_running` flag exists AND the
+    server process that created it is still alive. A flag whose owner PID is
+    dead (server crashed/killed mid-run, so the cleanup `finally` never fired)
+    is stale — we delete it and report not-running, so the site self-heals
+    instead of being stuck on 'running' forever.
+    """
+    if not os.path.exists(flag_path):
+        return False
+    try:
+        pid = int(Path(flag_path).read_text().strip() or "-1")
+    except (ValueError, OSError):
+        pid = -1
+    if _pid_alive(pid):
+        return True
+    # Stale flag — owner gone. Clean it up and treat as not running.
+    try:
+        os.remove(flag_path)
+    except OSError:
+        pass
+    return False
+
 # Mount static files
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(os.path.join(DATA_DIR, "uploads"), exist_ok=True)
@@ -570,7 +625,7 @@ async def analyze_site(
     result_path = os.path.join(BASE_DIR, "results", site, f"{site}_all_detections.geojson")
     flag_path   = os.path.join(BASE_DIR, "results", site, "_running")
 
-    if os.path.exists(flag_path):
+    if _pipeline_running(flag_path):
         return {"status": "already_running", "site": site,
                 "message": "Pipeline is already running for this site."}
 
@@ -578,7 +633,10 @@ async def analyze_site(
         import subprocess, sys
         script = os.path.join(BASE_DIR, "ortho_pipeline.py")
         os.makedirs(os.path.dirname(flag_path), exist_ok=True)
-        Path(flag_path).touch()
+        # Stamp the flag with this server's PID so a crash mid-run leaves a
+        # *detectably* stale flag (its owner PID is dead) rather than one that
+        # pins the site on 'running' forever.
+        Path(flag_path).write_text(str(os.getpid()))
         try:
             # encoding/errors are required: the pipeline prints UTF-8 (→ ± ×) and a
             # Windows parent would otherwise decode the captured stream as cp1252,
@@ -622,7 +680,7 @@ async def get_site_result(site: str):
     flag_path    = os.path.join(BASE_DIR, "results", site, "_running")
     geojson_path = os.path.join(BASE_DIR, "results", site, f"{site}_all_detections.geojson")
 
-    running = os.path.exists(flag_path)
+    running = _pipeline_running(flag_path)
 
     if not os.path.exists(geojson_path):
         return {
