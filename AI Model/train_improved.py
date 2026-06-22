@@ -35,7 +35,12 @@ def source_name(filename: str) -> str:
 def load_tiles_by_source(data_path: str):
     """
     Returns tiles grouped by source image name.
-    Class mapping: pit → 0, sapling → 1  (alphabetical = ImageFolder order)
+
+    Class mapping is alphabetical (ImageFolder order): alive → 0, dead → 1,
+    no_sapling → 2 for the V2 dataset.  Grouping relies on tile filenames being
+    `{source_stem}_{x}_{y}.jpg` (see build_dataset_v2) so source_name() can
+    recover the originating drone image; otherwise every tile becomes its own
+    'source' and the split degenerates to a leaky random per-tile split.
     """
     by_source = defaultdict(list)   # source_name → [(path, label)]
     class_dirs = sorted(os.listdir(data_path))          # ['pit', 'sapling']

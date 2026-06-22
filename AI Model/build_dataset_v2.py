@@ -151,8 +151,10 @@ def find_sources() -> dict:
 
 def yield_tiles(img_path: str, stage: str, rng: random.Random):
     """
-    Yield (bgr_tile, label) for every passing tile in the image.
+    Yield (bgr_tile, label, x, y) for every passing tile in the image.
     Positions are shuffled so early exits give spatially diverse samples.
+    The (x, y) pixel offset is returned so the saved tile filename can encode
+    its position — required for the trainer's source-level split.
     """
     img = cv2.imread(img_path)
     if img is None:
@@ -172,7 +174,7 @@ def yield_tiles(img_path: str, stage: str, rng: random.Random):
         tile  = img[y:y + TILE, x:x + TILE]
         label = label_tile(tile, stage)
         if label:
-            yield tile, label
+            yield tile, label, x, y
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -227,9 +229,16 @@ def main():
                 break
 
             try:
-                for tile, label in yield_tiles(img_path, stage_key, rng):
+                # Source-image stem — embedded in every tile filename so the
+                # trainer (train_improved.source_name) can group tiles by their
+                # originating drone image and split train/val by SOURCE, not by
+                # random tile. Naming tiles `{label}_{index}.jpg` (the old scheme)
+                # silently defeated that split and leaked tiles across the
+                # train/val boundary, inflating validation accuracy.
+                stem = Path(img_path).stem
+                for tile, label, tx, ty in yield_tiles(img_path, stage_key, rng):
                     if counts[label] < TARGET_PER_CLASS:
-                        fn  = f"{label}_{counts[label]:06d}.jpg"
+                        fn  = f"{stem}_{tx}_{ty}.jpg"
                         out = str(out_dirs[label] / fn)
                         cv2.imwrite(out, tile, [cv2.IMWRITE_JPEG_QUALITY, JPEG_Q])
                         counts[label] += 1

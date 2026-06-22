@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
     api_port: int = Field(default=8000, env="API_PORT")
     environment: str = Field(default="development", env="ENVIRONMENT")
+    # Comma-separated list of allowed CORS origins for the deployed frontend.
+    # Localhost dev origins are always allowed; set this to the production
+    # frontend URL(s) on Render/Vercel etc. e.g. "https://verdescan.vercel.app"
+    cors_origins: str = Field(default="", env="CORS_ORIGINS")
     
     # Processing Configuration
     max_concurrent_requests: int = Field(default=5, env="MAX_CONCURRENT_REQUESTS")

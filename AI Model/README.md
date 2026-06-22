@@ -16,17 +16,28 @@ The judging criteria: match the 25–30 exact GPS locations of dead saplings kno
 OP1 Orthomosaic (Post-Pitting)
         |
   Detect all planting pits (Hough circles + darkness filter + 2.5m grid dedup)
+  — streamed via rasterio windows, so multi-GB mosaics never load into RAM
         |
-  Extract GPS lat/lon for every pit  (GeoTIFF CRS → WGS84)
-        |  [~8,000 GPS anchor points]
+  Extract GPS lat/lon for every pit  (GeoTIFF CRS → WGS84, reprojected per pit
+  when OP1 and OP3 use different CRSs)
+        |  [thousands of GPS anchor points]
         |
-OP3 Orthomosaic (Post-SW / Survival Walk)
+OP3 Orthomosaic (Post-SW / Survival Walk = the weeding survey)
         |
-  For each pit GPS → project to OP3 pixel → crop 2m × 2m patch
+  For each pit GPS → project to OP3 pixel → read a small window
         |
-  ResNet18 CNN (3-class: alive / dead / no_sapling)
+  Survival decision from the WEEDING signal, not greenness:
+    • ring_contrast — a freshly-cleared ~1 m soil disc (the brief: weeding
+      "clears a 1 m diameter of soil around the sapling, visible from the sky")
+    • green_center  — localised foliage standing out against cleared soil
+    • a ±0.8 m local search absorbs the ~1 m GPS error (no RTK)
+  Why not the CNN / plain greenness?  Saplings have "minimal foliage" and a
+  dead spot can be greener (weeds) than a weeded survivor — challenge #2.
+  nodata holes and out-of-OP3-footprint pits are excluded, not guessed.
         |
-  Output: survival % + GeoJSON of every dead sapling with GPS coordinates
+  Output: survival % + GeoJSON of every casualty with GPS coordinates
+        |
+  evaluate.py → recall of the 25–30 known dead points (judging criterion #1)
 ```
 
 ---
@@ -48,9 +59,15 @@ python build_dataset_v2.py
 ### 3. Train the model
 ```bash
 python train_improved.py --dataset processed_dataset_v2 --batch 128 --num-workers 6 --cache
-# Val accuracy: 99.9%  |  3 classes: alive / dead / no_sapling
 # Saves: ml_models/forest_model_improved.pth
 #        ml_models/forest_model_improved.json  (metadata sidecar)
+#
+# NOTE: the reported val accuracy is high because the training LABELS are a
+# green-vs-brown colour rule (build_dataset_v2.label_tile), so the CNN largely
+# relearns that colour rule — it is NOT a measure of true survival accuracy.
+# The orthomosaic survival pipeline below therefore does NOT use this CNN; it
+# uses the physical weeding-circle signal and is scored by evaluate.py against
+# the known dead GPS points. The CNN remains only for the single-image upload demo.
 ```
 
 Deploy the trained model:
@@ -70,8 +87,21 @@ python ortho_pipeline.py --site debadihi
 ```
 
 Outputs (in `results/{site}/`):
-- `{site}_casualties.geojson` — GPS coordinates of every dead sapling
-- `{site}_all_detections.geojson` — full results with alive/dead/no_sapling
+- `{site}_casualties.geojson` — GPS coordinates of every dead sapling (the judged output)
+- `{site}_all_detections.geojson` — full results: alive / dead / no_data / out_of_bounds,
+  each with `green_center` + `ring_contrast` so thresholds can be recalibrated
+- `{site}_summary.json` — counts + survival %
+
+### 4b. Score against ground truth (judging criterion #1)
+```bash
+# Provide the 25–30 known dead GPS points as GeoJSON / CSV / KML / GPX:
+python evaluate.py \
+    --pred  results/benkmura/benkmura_casualties.geojson \
+    --truth path/to/known_dead_benkmura.csv \
+    --all   results/benkmura/benkmura_all_detections.geojson --tol 1.5
+# Reports recall (of the known dead), match distances, and the pipeline status
+# at each known-dead point. No ground-truth file yet? `--demo 30` self-tests it.
+```
 
 ### 5. Start the API server
 ```bash
@@ -120,8 +150,9 @@ Dashboard: http://localhost:3000 | API docs: http://localhost:8000/docs
 | Architecture | SimpleCNN (4 layers) | ResNet18 (pretrained ImageNet) |
 | Classes | 2 (pit / sapling) | 3 (alive / dead / no_sapling) |
 | Training data | 4,028 tiles, 2 dates | 15,000 tiles, all survey stages |
-| What it learned | "June vs August" (date bias) | Visual alive/dead/empty distinction |
-| Val accuracy | 100% (trivial task) | 99.9% (real 3-class task) |
+| What it learned | "June vs August" (date bias) | a green-vs-brown colour rule (labels are colour-derived) |
+| Val accuracy | 100% (trivial task) | high, but tautological — measures relearning the colour labels, not survival |
+| Used for survival? | no | **no** — the ortho pipeline uses the weeding-circle signal; the CNN is demo-only |
 | Health classifier | Separate HSV rules | Built into CNN |
 
 ---

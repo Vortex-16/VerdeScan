@@ -305,13 +305,13 @@ function YearProgress({ yearProgress }: { yearProgress: { year1: number; year2: 
         >
             <Card className="glass-card h-full">
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium">Monitoring Status</CardTitle>
+                    <CardTitle className="text-base font-medium">3-Year Monitoring Plan</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {[
-                        { label: 'Year 1 (2024)', value: yearProgress.year1, status: 'Completed' },
-                        { label: 'Year 2 (2025)', value: yearProgress.year2, status: 'In Progress' },
-                        { label: 'Year 3 (2026)', value: yearProgress.year3, status: 'In Progress' },
+                        { label: 'Year 1 (2024)', value: yearProgress.year1, status: 'OP1–OP3 surveyed' },
+                        { label: 'Year 2 (2025)', value: yearProgress.year2, status: 'Scheduled' },
+                        { label: 'Year 3 (2026)', value: yearProgress.year3, status: 'Scheduled' },
                     ].map((year, index) => (
                         <motion.div
                             key={year.label}
@@ -647,10 +647,13 @@ export default function DashboardPage() {
         return () => clearInterval(interval);
     }, []);
 
+    // Year 1 is fully surveyed (the dataset we have: OP1→OP3). Years 2-3 are
+    // future annual surveys per the brief's 3-year plan — not yet captured, so
+    // shown as scheduled rather than fabricated progress.
     const yearProgress = {
         year1: 100,
-        year2: 75,
-        year3: 25
+        year2: 0,
+        year3: 0
     };
 
     return (

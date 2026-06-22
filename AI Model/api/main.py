@@ -7,6 +7,7 @@ import json
 import os
 import re
 import uuid
+import tempfile
 import asyncio
 from datetime import datetime
 from pathlib import Path
@@ -56,12 +57,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow localhost dev origins; extend via env for production
+# CORS — always allow localhost dev origins; add production origins from the
+# CORS_ORIGINS env var (comma-separated) so the deployed frontend (Render/Vercel)
+# is not blocked. A lone "*" disables credentialed wildcard correctly.
 allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+extra = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+allowed_origins.extend(o for o in extra if o not in allowed_origins)
+use_wildcard = "*" in extra
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if use_wildcard else allowed_origins,
+    # Credentials cannot be combined with a "*" origin per the CORS spec.
+    allow_credentials=not use_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -406,16 +413,19 @@ async def get_global_stats():
                 "last_updated":    datetime.utcnow().isoformat(),
             }
 
-        # No ortho data and no uploaded patches — return demo numbers
+        # No ortho data and no uploaded patches — return honest zeros, not demo
+        # numbers. (Fabricated stats previously masked an empty system and would
+        # mislead a judge into thinking 18,000 trees had been analysed.)
         if stats.get("total_patches", 0) == 0:
             return {
-                "total_patches": 2,
-                "total_trees": 18000,
-                "total_alive": 15660,
-                "total_dead": 1800,
-                "total_diseased": 540,
-                "avg_survival_rate": 87.0,
+                "total_patches": 0,
+                "total_trees": 0,
+                "total_alive": 0,
+                "total_dead": 0,
+                "total_diseased": 0,
+                "avg_survival_rate": 0.0,
                 "last_updated": datetime.utcnow().isoformat(),
+                "message": "No analyses yet — run the ortho pipeline or upload imagery.",
             }
 
         return stats
@@ -570,10 +580,23 @@ async def analyze_site(
         os.makedirs(os.path.dirname(flag_path), exist_ok=True)
         Path(flag_path).touch()
         try:
-            subprocess.run(
+            # encoding/errors are required: the pipeline prints UTF-8 (→ ± ×) and a
+            # Windows parent would otherwise decode the captured stream as cp1252,
+            # garbling it and risking UnicodeDecodeError on undefined byte slots.
+            proc = subprocess.run(
                 [sys.executable, script, "--site", site_name],
-                cwd=BASE_DIR, capture_output=True, text=True, timeout=1800
+                cwd=BASE_DIR, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=1800,
             )
+            if proc.returncode != 0:
+                logger.error(
+                    f"Ortho pipeline for {site_name} exited {proc.returncode}. "
+                    f"stderr tail: {(proc.stderr or '')[-500:]}"
+                )
+            else:
+                logger.info(f"Ortho pipeline for {site_name} completed successfully")
+        except Exception as e:
+            logger.error(f"Ortho pipeline for {site_name} failed to run: {e}")
         finally:
             if os.path.exists(flag_path):
                 os.remove(flag_path)
@@ -613,17 +636,23 @@ async def get_site_result(site: str):
             raw = await f.read()
         features = json.loads(raw).get("features", [])
 
-        alive   = [f for f in features if f["properties"]["status"] == "alive"]
-        dead    = [f for f in features if f["properties"]["status"] == "dead"]
+        def _status(f): return f["properties"].get("status")
+        alive    = [f for f in features if _status(f) == "alive"]
+        dead     = [f for f in features if _status(f) == "dead"]
+        no_data  = [f for f in features if _status(f) == "no_data"]
+        oob      = [f for f in features if _status(f) == "out_of_bounds"]
         in_field = len(alive) + len(dead)
         survival_pct = round(len(alive) / in_field * 100, 1) if in_field else 0
 
         def _point(feat: dict) -> dict:
             coords = feat["geometry"]["coordinates"]
+            props  = feat["properties"]
             return {
                 "lat":  coords[1],
                 "lon":  coords[0],
-                "conf": feat["properties"]["confidence"],
+                "conf": props.get("confidence"),
+                "green_center":  props.get("green_center"),
+                "ring_contrast": props.get("ring_contrast"),
             }
 
         return {
@@ -633,6 +662,9 @@ async def get_site_result(site: str):
             "in_field":       in_field,
             "alive":          len(alive),
             "dead":           len(dead),
+            # Pits that could not be judged: nodata holes / outside the OP3 footprint.
+            "no_data":        len(no_data),
+            "out_of_bounds":  len(oob),
             "survival_pct":   survival_pct,
             "casualties":     [_point(f) for f in sorted(dead, key=lambda x: x["properties"]["confidence"], reverse=True)],
             "alive_locations": [_point(f) for f in sorted(alive, key=lambda x: x["properties"]["confidence"], reverse=True)],
@@ -640,6 +672,91 @@ async def get_site_result(site: str):
     except Exception as e:
         logger.error(f"Error reading site result for {site}: {e}")
         raise HTTPException(status_code=500, detail="Failed to read results")
+
+
+@app.post("/api/evaluate/{site}")
+async def evaluate_site(
+    site: str,
+    file: UploadFile = File(...),
+    tol: float = Form(1.5),
+):
+    """
+    Score the pipeline's casualties against uploaded ground-truth dead locations
+    — the brief's #1 judging criterion (recall of the 25-30 known dead points).
+
+    Accepts the known-dead points as GeoJSON / CSV / KML / GPX and reuses the
+    matching maths in evaluate.py. Returns recall, match distances, and a
+    per-point hit/miss list (with the pipeline status at each truth point) so the
+    frontend can render ground-truth markers on the map.
+    """
+    valid_sites = {"benkmura", "debadihi"}
+    if site not in valid_sites:
+        raise HTTPException(status_code=400, detail=f"Unknown site: {site}")
+
+    results_dir   = os.path.join(BASE_DIR, "results", site)
+    casualties    = os.path.join(results_dir, f"{site}_casualties.geojson")
+    all_detections = os.path.join(results_dir, f"{site}_all_detections.geojson")
+    if not os.path.exists(casualties):
+        raise HTTPException(
+            status_code=404,
+            detail=f"No results for '{site}' yet — run the analysis pipeline first.",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty ground-truth file")
+    suffix = os.path.splitext(file.filename or "gt.geojson")[1].lower() or ".geojson"
+    if suffix not in (".geojson", ".json", ".csv", ".kml", ".gpx", ".xml"):
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {suffix}")
+
+    tmp_path = None
+    try:
+        import evaluate as ev  # AI Model/ is on sys.path (see config import above)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        truth = ev.load_points(tmp_path)
+        pred  = ev.load_points(casualties)
+        all_pts, all_props = ev._load_pred_with_props(all_detections) \
+            if os.path.exists(all_detections) else ([], [])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Evaluate parse error for {site}: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not parse ground-truth file: {e}")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    if not truth:
+        raise HTTPException(status_code=400, detail="No points found in the ground-truth file")
+
+    matches, missed = ev.greedy_match(truth, pred, tol)
+    match_dist = {ti: d for ti, _, d in matches}
+
+    points = []
+    for ti, (lat, lon) in enumerate(truth):
+        near_d, near_status = ev.nearest((lat, lon), all_pts, all_props) if all_pts else (None, None)
+        matched = ti in match_dist
+        points.append({
+            "lat": lat, "lon": lon,
+            "matched": matched,
+            "distance": round(match_dist[ti] if matched else (near_d or 0.0), 2),
+            "nearest_status": near_status,
+        })
+
+    dists = list(match_dist.values())
+    return {
+        "site": site,
+        "tol": tol,
+        "total_truth": len(truth),
+        "matched": len(matches),
+        "recall": round(len(matches) / len(truth) * 100, 1),
+        "mean_dist":   round(sum(dists) / len(dists), 2) if dists else None,
+        "median_dist": round(sorted(dists)[len(dists) // 2], 2) if dists else None,
+        "max_dist":    round(max(dists), 2) if dists else None,
+        "points": points,
+    }
 
 
 @app.delete("/api/task/{task_id}")

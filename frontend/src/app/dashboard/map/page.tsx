@@ -1,18 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
     ArrowLeft, Map, RefreshCw, Download,
-    CheckCircle2, XCircle, Activity, Menu,
+    Activity, Menu, Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import DashboardSidebar from '@/components/DashboardSidebar';
-import { api, SiteResult, SiteMarker, SurveyPoint } from '@/lib/api';
+import { api, SiteResult, SiteMarker, SurveyPoint, EvalResult } from '@/lib/api';
 
 // Leaflet imports must be dynamic — it uses browser APIs
 const LeafletMap = dynamic(() => import('@/components/FieldLeafletMap'), {
@@ -71,9 +71,16 @@ export default function FieldMapPage() {
     const [showAlive, setShowAlive] = useState(true);
     const [showDead, setShowDead] = useState(true);
     const [showSurveys, setShowSurveys] = useState(true);
+    const [evalResult, setEvalResult] = useState<EvalResult | null>(null);
+    const [showTruth, setShowTruth] = useState(true);
+    const [evalBusy, setEvalBusy] = useState(false);
+    const [evalError, setEvalError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const fetchResult = async (s: SiteKey) => {
         setLoading(true);
+        setEvalResult(null);       // ground truth is per-site — clear on switch
+        setEvalError(null);
         const [r, sv] = await Promise.all([
             api.getSiteResult(s),
             api.getSiteSurveys(s),
@@ -81,6 +88,20 @@ export default function FieldMapPage() {
         setResult(r);
         setSurveys(sv?.surveys ?? []);
         setLoading(false);
+    };
+
+    const handleEvaluate = async (file: File) => {
+        setEvalBusy(true);
+        setEvalError(null);
+        const res = await api.evaluateSite(site, file);
+        if (res.ok) {
+            setEvalResult(res.result);
+            setShowTruth(true);
+        } else {
+            setEvalError(res.error);
+            setEvalResult(null);
+        }
+        setEvalBusy(false);
     };
 
     useEffect(() => {
@@ -135,6 +156,7 @@ export default function FieldMapPage() {
     const visibleAlive    = showAlive   ? aliveLocations  : [];
     const visibleDead     = showDead    ? deadLocations    : [];
     const visibleSurveys  = showSurveys ? surveys          : [];
+    const visibleTruth    = showTruth   ? (evalResult?.points ?? []) : [];
 
     return (
         <div className="h-screen flex flex-col bg-background overflow-hidden">
@@ -184,6 +206,35 @@ export default function FieldMapPage() {
                             </Button>
                         )}
 
+                        {/* Evaluate vs ground truth (judging criterion #1) */}
+                        {isComplete && (
+                            <>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".geojson,.json,.csv,.kml,.gpx,.xml"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) handleEvaluate(f);
+                                        e.target.value = '';   // allow re-uploading the same file
+                                    }}
+                                />
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={evalBusy}
+                                    title="Upload known-dead GPS points (GeoJSON/CSV/KML/GPX) to score recall"
+                                >
+                                    {evalBusy
+                                        ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                                        : <Target className="w-4 h-4 mr-1" />}
+                                    Evaluate
+                                </Button>
+                            </>
+                        )}
+
                         {/* Download */}
                         {isComplete && (
                             <Button variant="outline" size="sm" onClick={downloadGeoJSON}>
@@ -194,6 +245,12 @@ export default function FieldMapPage() {
                     </div>
                 </header>
 
+                {evalError && (
+                    <div className="flex-shrink-0 px-4 py-2 bg-red-500/10 text-red-500 text-sm border-b border-red-500/20">
+                        Evaluation failed: {evalError}
+                    </div>
+                )}
+
                 {/* Stats bar */}
                 {isComplete && (
                     <motion.div
@@ -201,7 +258,7 @@ export default function FieldMapPage() {
                         animate={{ opacity: 1, y: 0 }}
                         className="flex-shrink-0 px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm flex flex-wrap items-center gap-3 z-10"
                     >
-                        <StatChip label="Pits Detected" value={(result!.in_field ?? 0).toLocaleString()} />
+                        <StatChip label="Pits Classified" value={(result!.in_field ?? 0).toLocaleString()} />
                         <StatChip label="Alive" value={(result!.alive ?? 0).toLocaleString()} color="text-alive" />
                         <StatChip label="Dead" value={(result!.dead ?? 0).toLocaleString()} color="text-dead" />
                         <StatChip
@@ -209,6 +266,32 @@ export default function FieldMapPage() {
                             value={result!.survival_pct != null ? `${result!.survival_pct}%` : '—'}
                             color={(result!.survival_pct ?? 0) >= 75 ? 'text-alive' : 'text-dead'}
                         />
+                        {(result!.no_data ?? 0) > 0 && (
+                            <StatChip
+                                label="No-Data (skipped)"
+                                value={(result!.no_data ?? 0).toLocaleString()}
+                                color="text-muted-foreground"
+                            />
+                        )}
+
+                        {/* Recall vs ground truth — appears once a known-dead file is scored */}
+                        {evalResult && (
+                            <>
+                                <div className="w-px h-10 bg-border mx-1" />
+                                <StatChip
+                                    label={`Recall (${evalResult.matched}/${evalResult.total_truth} dead)`}
+                                    value={`${evalResult.recall}%`}
+                                    color={evalResult.recall >= 80 ? 'text-alive' : 'text-dead'}
+                                />
+                                {evalResult.mean_dist != null && (
+                                    <StatChip
+                                        label="Mean match Δ"
+                                        value={`${evalResult.mean_dist} m`}
+                                        color="text-muted-foreground"
+                                    />
+                                )}
+                            </>
+                        )}
 
                         <div className="ml-auto flex items-center gap-2 flex-wrap">
                             <LayerToggle
@@ -232,6 +315,15 @@ export default function FieldMapPage() {
                                     color="#a855f7"
                                     active={showSurveys}
                                     onToggle={() => setShowSurveys(v => !v)}
+                                />
+                            )}
+                            {evalResult && (
+                                <LayerToggle
+                                    label="Ground truth"
+                                    count={evalResult.points.length}
+                                    color="#14b8a6"
+                                    active={showTruth}
+                                    onToggle={() => setShowTruth(v => !v)}
                                 />
                             )}
                         </div>
@@ -272,6 +364,7 @@ export default function FieldMapPage() {
                             alive={visibleAlive}
                             dead={visibleDead}
                             surveys={visibleSurveys}
+                            truth={visibleTruth}
                             site={site}
                             loading={loading}
                         />

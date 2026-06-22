@@ -7,6 +7,14 @@ import sys
 import asyncio
 from pathlib import Path
 
+# Windows consoles default to cp1252 and crash on the emoji/Unicode in the
+# startup banner below.  Force UTF-8 so `python run_server.py` works everywhere.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # Add project root to Python path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))

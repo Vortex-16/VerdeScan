@@ -1,29 +1,68 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, ZoomControl, useMapEvents } from 'react-leaflet';
-import { SiteMarker, SurveyPoint } from '@/lib/api';
+import { SiteMarker, SurveyPoint, EvalPoint } from '@/lib/api';
 import 'leaflet/dist/leaflet.css';
 
+// Fallback centres (used only before detections load — the map then auto-fits
+// to the real data via FitToData). Set to each site's actual detection centroid.
 const SITE_CENTRES: Record<string, [number, number]> = {
-    benkmura: [21.655, 83.818],
-    debadihi: [21.660, 83.825],
+    benkmura: [21.6533, 83.8202],
+    debadihi: [21.8521, 84.0657],
 };
 
 const ALIVE_COLOUR   = '#22c55e';
 const DEAD_COLOUR    = '#dc2626';
 const SURVEY_COLOUR  = '#a855f7';
+const TRUTH_HIT      = '#14b8a6';   // teal — known-dead point we detected
+const TRUTH_MISS     = '#f59e0b';   // amber — known-dead point we missed
 
 // Maximum markers rendered at once. Above this we thin by confidence.
 // Leaflet handles ~5 000 SVG circles comfortably; beyond that frame-rate drops.
 const MAX_MARKERS = 5000;
 
-function FlyTo({ site }: { site: string }) {
+/**
+ * Frame the map on the actual detections rather than a hardcoded centre.
+ * The old per-site SITE_CENTRES were ~30 km off for Debadihi, so its dots
+ * rendered far outside the viewport and the map looked empty. Fitting to the
+ * real point bounds keeps every site correct without manual coordinates.
+ * setView/fitBounds run with animate:false: a trailing flyTo animation frame
+ * fired against a map torn down mid-flight (StrictMode double-mount / HMR)
+ * reads `_leaflet_pos` on a removed pane and crashes the whole map.
+ */
+function FitToData({
+    site,
+    points,
+}: {
+    site: string;
+    points: Array<[number, number]>;
+}) {
     const map = useMap();
+    const framedSite = useRef<string | null>(null);
     useEffect(() => {
-        const centre = SITE_CENTRES[site];
-        if (centre) map.flyTo(centre, 16, { duration: 1.2 });
-    }, [site, map]);
+        if (points.length === 0) return;
+        // Only auto-frame once per site so user pan/zoom isn't yanked back on
+        // every poll refresh.
+        if (framedSite.current === site) return;
+        framedSite.current = site;
+        if (points.length === 1) {
+            map.setView(points[0], 17, { animate: false });
+            return;
+        }
+        let minLat = points[0][0], maxLat = points[0][0];
+        let minLon = points[0][1], maxLon = points[0][1];
+        for (const [lat, lon] of points) {
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+            if (lon < minLon) minLon = lon;
+            if (lon > maxLon) maxLon = lon;
+        }
+        map.fitBounds([[minLat, minLon], [maxLat, maxLon]], {
+            padding: [40, 40],
+            animate: false,
+        });
+    }, [site, points, map]);
     return null;
 }
 
@@ -37,15 +76,27 @@ interface Props {
     alive: SiteMarker[];
     dead: SiteMarker[];
     surveys?: SurveyPoint[];
+    truth?: EvalPoint[];
     site: string;
     loading: boolean;
 }
 
-export default function FieldLeafletMap({ alive, dead, surveys = [], site, loading }: Props) {
+export default function FieldLeafletMap({ alive, dead, surveys = [], truth = [], site, loading }: Props) {
     const centre = SITE_CENTRES[site] ?? [21.655, 83.818];
     const [zoom, setZoom] = useState(16);
 
     const total = alive.length + dead.length;
+
+    // Bounds are computed from the full (unthinned) detection set so the map
+    // frames the real planting area regardless of marker thinning at low zoom.
+    const fitPoints = useMemo<Array<[number, number]>>(
+        () => [
+            ...alive.map((m): [number, number] => [m.lat, m.lon]),
+            ...dead.map((m): [number, number] => [m.lat, m.lon]),
+            ...surveys.map((s): [number, number] => [s.lat, s.lon]),
+        ],
+        [alive, dead, surveys],
+    );
 
     // At low zoom show a thinned sample sorted by confidence (highest first).
     // At high zoom (≥18) show everything — viewport is small so DOM count stays low.
@@ -94,7 +145,7 @@ export default function FieldLeafletMap({ alive, dead, surveys = [], site, loadi
                 />
 
                 <ZoomControl position="bottomright" />
-                <FlyTo site={site} />
+                <FitToData site={site} points={fitPoints} />
                 <ZoomTracker onZoom={setZoom} />
 
                 {aliveMarkers.map((m, i) => (
@@ -126,6 +177,34 @@ export default function FieldLeafletMap({ alive, dead, surveys = [], site, loadi
                                 <p className="font-semibold text-red-600">Dead / Casualty</p>
                                 <p className="text-xs text-muted-foreground">Conf: {(m.conf * 100).toFixed(0)}%</p>
                                 <p className="text-xs font-mono">{m.lat.toFixed(6)}, {m.lon.toFixed(6)}</p>
+                            </div>
+                        </Popup>
+                    </CircleMarker>
+                ))}
+
+                {truth.map((t, i) => (
+                    <CircleMarker
+                        key={`gt-${i}`}
+                        center={[t.lat, t.lon]}
+                        radius={t.matched ? 7 : 9}
+                        pathOptions={
+                            t.matched
+                                ? { color: '#ffffff', fillColor: TRUTH_HIT, fillOpacity: 0.95, weight: 2 }
+                                : { color: TRUTH_MISS, fillColor: 'transparent', fillOpacity: 0, weight: 3 }
+                        }
+                    >
+                        <Popup>
+                            <div className="text-sm">
+                                <p className="font-semibold" style={{ color: t.matched ? TRUTH_HIT : TRUTH_MISS }}>
+                                    Known dead — {t.matched ? 'DETECTED' : 'MISSED'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    {t.matched ? `matched at ${t.distance} m` : `nearest casualty ${t.distance} m away`}
+                                </p>
+                                {t.nearest_status && (
+                                    <p className="text-xs">pipeline here: <strong>{t.nearest_status}</strong></p>
+                                )}
+                                <p className="text-xs font-mono">{t.lat.toFixed(6)}, {t.lon.toFixed(6)}</p>
                             </div>
                         </Popup>
                     </CircleMarker>

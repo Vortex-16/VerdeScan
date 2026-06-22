@@ -3,6 +3,14 @@ VerdeScan Backend — End-to-End Pipeline Test
 =============================================
 Tests the full processing pipeline without needing a running HTTP server.
 
+SCOPE / CAVEAT: these tests use SYNTHETIC solid-colour images and exercise the
+legacy single-image CNN path, the task queue, and the API plumbing.  Because a
+green square is classified ALIVE and a brown square DEAD, the health-classifier
+assertions are tautological — they confirm the plumbing works, NOT that survival
+detection is accurate.  The real survival logic (weeding-circle decision rule)
+and the casualty-scoring maths are tested in tests/test_ortho.py, and accuracy
+against the known dead GPS points is measured by evaluate.py.
+
 Run from the 'AI Model' directory:
     python -m pytest tests/test_pipeline.py -v
 OR:

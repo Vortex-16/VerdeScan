@@ -9,6 +9,7 @@ export interface GlobalStats {
     total_diseased: number;
     avg_survival_rate: number;
     last_updated: string;
+    message?: string;
 }
 
 /**
@@ -62,6 +63,10 @@ export interface SiteMarker {
     lat: number;
     lon: number;
     conf: number;
+    /** ExG vegetation fraction in the central disc (sapling presence) */
+    green_center?: number;
+    /** Weeding-ring contrast (cleared centre vs vegetated surround) */
+    ring_contrast?: number;
 }
 
 export interface SiteResult {
@@ -71,10 +76,39 @@ export interface SiteResult {
     in_field?: number;
     alive?: number;
     dead?: number;
+    /** Pits that could not be judged because they fell in a nodata hole */
+    no_data?: number;
+    /** Pits outside the OP3 footprint */
+    out_of_bounds?: number;
     survival_pct?: number;
     casualties?: SiteMarker[];
     alive_locations?: SiteMarker[];
     message?: string;
+}
+
+/** One ground-truth dead location scored against the pipeline's casualties. */
+export interface EvalPoint {
+    lat: number;
+    lon: number;
+    /** true if a predicted casualty lies within tolerance */
+    matched: boolean;
+    /** metres to the matched casualty (or to the nearest detection if missed) */
+    distance: number;
+    /** pipeline status at the nearest detection: 'dead' = correct, 'alive' = a real miss */
+    nearest_status?: string | null;
+}
+
+export interface EvalResult {
+    site: string;
+    tol: number;
+    total_truth: number;
+    matched: number;
+    /** recall as a percentage (0-100) */
+    recall: number;
+    mean_dist?: number | null;
+    median_dist?: number | null;
+    max_dist?: number | null;
+    points: EvalPoint[];
 }
 
 export interface SurveyPoint {
@@ -243,6 +277,35 @@ export const api = {
         } catch (error) {
             console.error('API Error [getSiteSurveys]:', error);
             return null;
+        }
+    },
+
+    /**
+     * Score the pipeline's casualties against an uploaded ground-truth file of
+     * known dead locations (GeoJSON/CSV/KML/GPX) → recall + per-point hit/miss.
+     * Returns { ok: false, error } on failure so the UI can show the reason.
+     */
+    async evaluateSite(
+        site: 'benkmura' | 'debadihi',
+        file: File,
+        tol = 1.5,
+    ): Promise<{ ok: true; result: EvalResult } | { ok: false; error: string }> {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('tol', String(tol));
+            const res = await fetch(`${API_BASE_URL}/evaluate/${site}`, {
+                method: 'POST',
+                body: formData,
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: 'Evaluation failed' }));
+                return { ok: false, error: err.detail || 'Evaluation failed' };
+            }
+            return { ok: true, result: await res.json() };
+        } catch (error) {
+            console.error('API Error [evaluateSite]:', error);
+            return { ok: false, error: String(error) };
         }
     },
 };
