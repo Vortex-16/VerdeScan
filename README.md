@@ -191,7 +191,10 @@ cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
 | `/api/site-surveys/{site}` | GET | Camera GPS survey points from uploaded images |
 | `/api/upload-image` | POST | Upload single drone image for quick AI analysis |
 | `/api/task-status/{task_id}` | GET | Poll processing progress |
+| `/api/task/{task_id}` | DELETE | Cancel or remove an ongoing task |
 | `/api/stats` | GET | Global statistics (merges ortho + upload results) |
+| `/api/patches` | GET | List available analyzed patches |
+| `/api/queue-status` | GET | View current background task queue status |
 | `/health` | GET | System health + model info |
 
 ---
