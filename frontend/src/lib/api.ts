@@ -26,7 +26,6 @@ export interface TreeDetail {
     center?: [number, number];
     gps?: { lat: number; lng: number; altitude?: number };
     proof_image?: string;
-    gemini_analysis?: string;
 }
 
 export interface PatchSummary {
@@ -146,7 +145,7 @@ export interface TaskStatusResponse {
 export const api = {
     async getGlobalStats(): Promise<GlobalStats> {
         try {
-            const res = await fetch(`${API_BASE_URL}/stats`);
+            const res = await fetch(`${API_BASE_URL}/stats`, { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch stats');
             return await res.json();
         } catch (error) {
@@ -165,7 +164,7 @@ export const api = {
 
     async getPatches(): Promise<string[]> {
         try {
-            const res = await fetch(`${API_BASE_URL}/patches`);
+            const res = await fetch(`${API_BASE_URL}/patches`, { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch patches');
             return await res.json();
         } catch (error) {
@@ -176,7 +175,7 @@ export const api = {
 
     async getPatchDetails(patchId: string): Promise<PatchData | null> {
         try {
-            const res = await fetch(`${API_BASE_URL}/patch/${encodeURIComponent(patchId)}`);
+            const res = await fetch(`${API_BASE_URL}/patch/${encodeURIComponent(patchId)}`, { cache: 'no-store' });
             if (!res.ok) throw new Error(`Failed to fetch patch '${patchId}'`);
             const data = await res.json();
             // Ensure trees field exists (alias for details)
@@ -190,7 +189,7 @@ export const api = {
 
     async getAllPatchDetails(): Promise<PatchData[]> {
         try {
-            const res = await fetch(`${API_BASE_URL}/patches/all`);
+            const res = await fetch(`${API_BASE_URL}/patches/all`, { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch all patch details');
             const list: PatchData[] = await res.json();
             // Normalise each entry
@@ -233,7 +232,7 @@ export const api = {
 
     async getTaskStatus(taskId: string): Promise<TaskStatusResponse | null> {
         try {
-            const res = await fetch(`${API_BASE_URL}/task-status/${taskId}`);
+            const res = await fetch(`${API_BASE_URL}/task-status/${taskId}`, { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to get task status');
             return await res.json();
         } catch (error) {
@@ -260,7 +259,7 @@ export const api = {
 
     async getSiteResult(site: 'benkmura' | 'debadihi'): Promise<SiteResult | null> {
         try {
-            const res = await fetch(`${API_BASE_URL}/site-result/${site}`);
+            const res = await fetch(`${API_BASE_URL}/site-result/${site}`, { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch site result');
             return await res.json();
         } catch (error) {
@@ -271,7 +270,7 @@ export const api = {
 
     async getSiteSurveys(site: 'benkmura' | 'debadihi'): Promise<SiteSurveyResponse | null> {
         try {
-            const res = await fetch(`${API_BASE_URL}/site-surveys/${site}`);
+            const res = await fetch(`${API_BASE_URL}/site-surveys/${site}`, { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch site surveys');
             return await res.json();
         } catch (error) {

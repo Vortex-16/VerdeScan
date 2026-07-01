@@ -442,6 +442,12 @@ def check_survival(
 
     print(f"  OP3 {'geographic' if op3_meta.is_geographic else 'projected'} CRS · "
           f"{res_m*100:.2f} cm/px · crop {2*half_px}px · search ±{search_px}px")
+          
+    # Load AI Model to process OP3 windows
+    print("  Loading ResNet18 model for OP3 classification...")
+    from core.forest_processor import ForestMLProcessor
+    ml_processor = ForestMLProcessor()
+          
     print(f"  Checking {len(pits)} pit locations (windowed reads) …")
     t0 = time.time()
 
@@ -499,7 +505,10 @@ def check_survival(
 
             _, sig, sub = best
             hough = _hough_ring(sub, res_m)
-            status, conf = classify_signals(sig, hough)
+            
+            # Use ResNet18 AI to classify the window instead of heuristics
+            status, conf = ml_processor.predict_crop(sub)
+            
             if status == "alive":
                 alive += 1
             else:

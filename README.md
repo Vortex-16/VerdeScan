@@ -29,7 +29,7 @@ flowchart TD
     subgraph UPLOAD_PIPELINE["AI Model — forest_processor.py"]
         SLIDE["Sliding Window\n224×224 tiles, stride=224"]
         CNN2["ResNet18 CNN\nsame model weights"]
-        NMS["Connected-component NMS\nmerge adjacent positive tiles"]
+
         RESULT["ProcessingResult\nalive/dead counts + bboxes"]
     end
 
@@ -54,7 +54,7 @@ flowchart TD
     GEOJSON --> SITERESULT
     GEOJSON --> STATS
 
-    UPLOAD --> SLIDE --> CNN2 --> NMS --> RESULT
+    UPLOAD --> SLIDE --> CNN2 --> RESULT
     RESULT --> TASKAPI
     RESULT --> STATS
 
@@ -142,15 +142,15 @@ mv *.pth "AI Model/ml_models/forest_model.pth"
 ```bash
 cd "AI Model"
 pip install -r requirements.txt
-python run_server.py
+uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 API at http://localhost:8000 · Docs at http://localhost:8000/docs
 
 ### 2. Frontend
 ```bash
 cd frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 Dashboard at http://localhost:3000
 
@@ -189,6 +189,7 @@ cp ml_models/forest_model_improved.pth ml_models/forest_model.pth
 | `/api/analyze-site?site=benkmura` | POST | Run full orthomosaic pipeline (background, ~7 min) |
 | `/api/site-result/{site}` | GET | Survival stats + alive_locations + casualties GPS list |
 | `/api/site-surveys/{site}` | GET | Camera GPS survey points from uploaded images |
+| `/api/evaluate/{site}` | POST | Score casualties against a ground-truth CSV/GeoJSON file |
 | `/api/upload-image` | POST | Upload single drone image for quick AI analysis |
 | `/api/task-status/{task_id}` | GET | Poll processing progress |
 | `/api/task/{task_id}` | DELETE | Cancel or remove an ongoing task |
@@ -219,13 +220,11 @@ VerdeScan/
 │   ├── api/
 │   │   └── main.py              — FastAPI server, all endpoints, EXIF GPS extraction
 │   ├── core/
-│   │   ├── forest_processor.py  — CNN inference (auto-detects V1 SimpleCNN / V2 ResNet18)
+│   │   ├── forest_processor.py  — CNN inference (ResNet18)
 │   │   ├── task_manager.py      — Async GPU processing queue
-│   │   ├── data_manager.py      — JSON persistence + CSV export
-│   │   └── health_classifier.py — HSV fallback health classifier
+│   │   └── data_manager.py      — SQLite persistence + CSV export
 │   ├── models/
-│   │   ├── data_structures.py   — Dataclasses (TreeResult, ProcessingResult…)
-│   │   └── ml_processor.py      — Abstract base + Gemini integration
+│   │   └── data_structures.py   — Dataclasses (TreeResult, ProcessingResult…)
 │   ├── ml_models/
 │   │   └── forest_model.pth     — Active model (ResNet18, 3-class, 99.9% val acc)
 │   ├── ortho_pipeline.py        — Orthomosaic pit-detection + survival pipeline
@@ -286,10 +285,8 @@ Configured for Render.com via `render.yaml`.
 ```bash
 # Backend
 pip install -r "AI Model/requirements.txt"
-python "AI Model/run_server.py"
+cd "AI Model" && uvicorn api.main:app --host 0.0.0.0 --port 8000
 
 # Frontend
-cd frontend && npm install && npm run build && npm start
+cd frontend && bun install && bun run build && bun run start
 ```
-
-Set `NEXT_PUBLIC_API_URL` to your deployed backend URL.

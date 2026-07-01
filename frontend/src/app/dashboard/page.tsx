@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import {
     TreePine,
     Map,
-    BarChart3,
     Bell,
     Search,
     Calendar,
@@ -72,8 +71,8 @@ function FieldAnalysisCard() {
     };
 
     const downloadGeoJSON = async () => {
-        const res = await fetch(`http://127.0.0.1:8000/api/site-result/${site}`);
-        const data = await res.json();
+        const data = await api.getSiteResult(site);
+        if (!data) return;
         const features = (data.casualties || []).map((c: {lat:number;lon:number;conf:number}) => ({
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
@@ -583,7 +582,6 @@ function ImageUpload({ onUploadComplete }: { onUploadComplete: () => void }) {
 export default function DashboardPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [selectedYear, setSelectedYear] = useState('2024');
-    const [loading, setLoading] = useState(true);
     const [patches, setPatches] = useState<PatchAlert[]>([]);
     const [stats, setStats] = useState<GlobalStats>({
         total_patches: 0,
@@ -597,7 +595,6 @@ export default function DashboardPage() {
 
     useEffect(() => {
         async function fetchData() {
-            setLoading(true);
             try {
                 // Fetch stats
                 const data = await api.getGlobalStats();
@@ -638,7 +635,6 @@ export default function DashboardPage() {
             } catch (error) {
                 console.error("Failed to fetch dashboard data:", error);
             }
-            setLoading(false);
         }
         fetchData();
 

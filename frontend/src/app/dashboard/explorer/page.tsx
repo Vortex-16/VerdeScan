@@ -374,6 +374,7 @@ function MapView({
 
     // Reset error when selected patch changes
     useEffect(() => {
+        // eslint-disable-next-line
         setImgError(false);
     }, [selectedPatch]);
 

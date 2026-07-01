@@ -2,9 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import anime from 'animejs';
 import {
   TreePine,
   Satellite,
@@ -27,8 +24,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import MagneticButton from '@/components/ui/magnetic-button';
-
-gsap.registerPlugin(ScrollTrigger);
 
 // Scroll state hook
 function useScrollState(threshold: number = 50) {
@@ -233,93 +228,6 @@ export default function LandingPage() {
   const heroScale = useTransform(scrollYProgress, [0, 0.2], [1, 0.95]);
 
   // Cursor glow effect
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (cursorRef.current) {
-        cursorRef.current.style.left = `${e.clientX}px`;
-        cursorRef.current.style.top = `${e.clientY}px`;
-      }
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
-
-  // GSAP animations
-  useEffect(() => {
-    // Hero title animation
-    gsap.fromTo(
-      '.hero-title-word',
-      { opacity: 0, y: 50, rotateX: -30 },
-      {
-        opacity: 1,
-        y: 0,
-        rotateX: 0,
-        duration: 1,
-        stagger: 0.1,
-        ease: 'power3.out',
-        delay: 0.3,
-      }
-    );
-
-    // Features section parallax
-    gsap.utils.toArray('.feature-card').forEach((card) => {
-      gsap.fromTo(
-        card as Element,
-        { y: 50 },
-        {
-          y: 0,
-          scrollTrigger: {
-            trigger: card as Element,
-            start: 'top bottom-=100',
-            end: 'top center',
-            scrub: 1,
-          },
-        }
-      );
-    });
-
-    // Process line draw animation
-    gsap.fromTo(
-      '.process-line',
-      { scaleX: 0, transformOrigin: "left" },
-      {
-        scaleX: 1,
-        scrollTrigger: {
-          trigger: "#how-it-works",
-          start: "top center",
-          end: "center center",
-          scrub: 1,
-        }
-      }
-    );
-  }, []);
-
-  // Anime.js particle effect
-  useEffect(() => {
-    const createParticle = () => {
-      const particle = document.createElement('div');
-      particle.className = 'absolute w-1 h-1 bg-forest/30 rounded-full';
-      const container = document.querySelector('.particle-container');
-      if (!container) return;
-
-      particle.style.left = `${Math.random() * 100}%`;
-      particle.style.top = '100%';
-      container.appendChild(particle);
-
-      anime({
-        targets: particle,
-        translateY: -window.innerHeight - 100,
-        opacity: [0.5, 0],
-        scale: [1, 0],
-        duration: 4000 + Math.random() * 2000,
-        easing: 'easeOutQuad',
-        complete: () => particle.remove(),
-      });
-    };
-
-    const interval = setInterval(createParticle, 300);
-    return () => clearInterval(interval);
-  }, []);
 
   const features = [
     {

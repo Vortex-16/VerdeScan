@@ -34,17 +34,29 @@ const MAX_MARKERS = 5000;
 function FitToData({
     site,
     points,
+    fallback,
+    loading,
 }: {
     site: string;
     points: Array<[number, number]>;
+    fallback: [number, number];
+    loading: boolean;
 }) {
     const map = useMap();
     const framedSite = useRef<string | null>(null);
     useEffect(() => {
-        if (points.length === 0) return;
-        // Only auto-frame once per site so user pan/zoom isn't yanked back on
-        // every poll refresh.
+        if (loading) return; // Wait for the new site's data to finish loading
+        
+        // Only auto-frame once per site so user pan/zoom isn't yanked back on every poll refresh.
         if (framedSite.current === site) return;
+        
+        if (points.length === 0) {
+            // No data yet (or empty site). Move to fallback but don't lock framedSite,
+            // so we still fit to bounds once data actually arrives.
+            map.setView(fallback, 16, { animate: false });
+            return;
+        }
+        
         framedSite.current = site;
         if (points.length === 1) {
             map.setView(points[0], 17, { animate: false });
@@ -62,7 +74,7 @@ function FitToData({
             padding: [40, 40],
             animate: false,
         });
-    }, [site, points, map]);
+    }, [site, points, map, fallback, loading]);
     return null;
 }
 
@@ -145,7 +157,7 @@ export default function FieldLeafletMap({ alive, dead, surveys = [], truth = [],
                 />
 
                 <ZoomControl position="bottomright" />
-                <FitToData site={site} points={fitPoints} />
+                <FitToData site={site} points={fitPoints} fallback={centre} loading={loading} />
                 <ZoomTracker onZoom={setZoom} />
 
                 {aliveMarkers.map((m, i) => (

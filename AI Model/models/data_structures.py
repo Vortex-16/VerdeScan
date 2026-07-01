@@ -74,7 +74,6 @@ class HealthClassification:
     """Tree health classification result."""
     status: TreeStatus
     confidence: float
-    gemini_analysis: Optional[str] = None
     proof_image_path: Optional[str] = None
     
     def __post_init__(self):
@@ -93,7 +92,6 @@ class TreeResult:
     center_coords: Tuple[int, int]
     gps_coords: Optional[GPSCoordinates] = None
     proof_image_path: Optional[str] = None
-    gemini_analysis: Optional[str] = None
     
     @classmethod
     def from_detection_and_classification(
@@ -111,8 +109,7 @@ class TreeResult:
             classification_confidence=classification.confidence,
             center_coords=detection.center_coords,
             gps_coords=gps_coords,
-            proof_image_path=classification.proof_image_path,
-            gemini_analysis=classification.gemini_analysis
+            proof_image_path=classification.proof_image_path
         )
 
 @dataclass
@@ -176,18 +173,7 @@ class ProcessingResult:
             "average_confidence": round(average_confidence, 3)
         }
 
-@dataclass
-class GeminiResponse:
-    """Response from Gemini API analysis."""
-    analysis: str
-    confidence: float
-    suggested_status: TreeStatus
-    processing_time: float
-    
-    def __post_init__(self):
-        """Validate Gemini response data."""
-        if not (0.0 <= self.confidence <= 1.0):
-            raise ValueError(f"Confidence must be between 0.0 and 1.0, got {self.confidence}")
+
 
 @dataclass
 class TaskStatus:

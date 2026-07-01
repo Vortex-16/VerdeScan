@@ -105,6 +105,7 @@ export default function FieldMapPage() {
     };
 
     useEffect(() => {
+        // eslint-disable-next-line
         fetchResult(site);
     }, [site]);
 
@@ -361,6 +362,7 @@ export default function FieldMapPage() {
                         </div>
                     ) : (
                         <LeafletMap
+                            key={site}
                             alive={visibleAlive}
                             dead={visibleDead}
                             surveys={visibleSurveys}

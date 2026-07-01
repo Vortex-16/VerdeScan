@@ -26,17 +26,12 @@ class Settings(BaseSettings):
     
     # ML Model Configuration
     ml_model_path: str = Field(default="models", env="ML_MODEL_PATH")
-    # Path to the active .pth checkpoint (auto-detected arch: ResNet18 or SimpleCNN)
+    # Path to the active .pth checkpoint (ResNet18)
     active_model_file: str = Field(default="ml_models/forest_model.pth", env="ACTIVE_MODEL_FILE")
     detection_confidence_threshold: float = Field(default=0.2, env="DETECTION_CONFIDENCE_THRESHOLD")
     classification_confidence_threshold: float = Field(default=0.7, env="CLASSIFICATION_CONFIDENCE_THRESHOLD")
     
-    # External API Configuration
-    gemini_api_key: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
-    # gemini-pro-vision was deprecated April 2025; gemini-1.5-flash superseded by 2.5.
-    # gemini-2.5-flash is the current recommended multimodal model.
-    gemini_model: str = Field(default="gemini-2.5-flash", env="GEMINI_MODEL")
-    
+
     # Storage Configuration
     data_dir: str = Field(default="data", env="DATA_DIR")
     static_dir: str = Field(default="static", env="STATIC_DIR")

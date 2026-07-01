@@ -1,0 +1,50 @@
+﻿ML/AI to compare drone images of an afforestation patch and point out casualties. 
+The Odisha forest department plants nearly 5 crore trees every year across the state. Afforestation programs are taken up over patches of irregular shapes and sizes and models that depend on the existing vegetation density of the patch. There is a need for proof-of-concept of drone imagery based 
+monitoring of such programs to ascertain sapling survival and growth. We are looking for image processing and machine-learning based solutions while we provide the raw imagery of these patches in the problem. 
+  
+
+Sequence of physical operations 
+OP1: During March-to-May period of Year 1, pits of size 45x45x45cm are dug up and left to the sun to kill any microbes. This is carried out by manual labor or digging machines (JCBs) with fixed size buckets and is easily visible from the sky. 
+www.ktj.in 
+OP2: During the first monsoon rains and subsequent month (June 15 to July 30), planting of saplings is carried out. The saplings are 18 months old and are 4 to 6 ft tall depending on the species with minimal foliage. 
+OP3: During Oct-Nov of Year 1, for weeding, a diameter of 1m soil is cleared around the sapling, which is visible from the sky. The same operation is conducted during Year 2 and Year 3 during the same period. 
+Two patches were surveyed using a drone (Mavic 3T). The .kml file is fed into the drone and the mission is prepared. 
+Debadihi VF: 6.25 ha, 10000 saplings planted at a spacing of 2.5m from each other. 
+Benkmura VF: 5.27 Ha, 8000 saplings planted at a spacing of 2.5m from each other 
+Drone survey was carried out before OP1, after OP1, after OP2 and after OP3. The drone elevation height ranged between 70 m to 80 m and the pixel resolution of each image ranged from 2.46 cm to 2.81 Cm. The sidelap and endlap was 65% and 75 % respectively. The software Pix4D has been used to generate a medium resolution orthomosaic. 
+A google drive will be shared with the participants with all the raw data and generated orthomosaics for all the four times the survey has been carried out. They are free to generate their own orthomosaics using a software of their choice. The raw data contains images whose metadata carries information about the geo-coordinates of each pixel, which may need relevant softwares to work with.
+Objective/Needed Solution: 
+The question is: can the ortho-images be analyzed and survival percentage of the plants be obtained after OP3? If we have planted 10,000 saplings, and some of them die, can those points be located where the saplings do not exist anymore? 
+The solution is to monitor the success of the afforestation programs over a period of 3 years in a particular patch. Every year, there shall be a drone survey of the patch. 
+We are looking for a proof of concept(PoC) that this is possible. Challenges (Additional Context to help the participants): 
+1. You have to work with the given resolution of the raw data. The PoC at a very high resolution is not very useful, as gathering such data is very expensive. 
+2. The existing greenery around the saplings might pose a challenge in identification of target saplings. 
+3. The metadata of the images contain information about geographical coordinates for all the pixels, but with a subpar accuracy of 1m as an RTK module was not used with the drone (which would have provided sub centimeter accuracy). 
+4. It is recommended that coordinate information from images after OP1 be used, as pits can easily be identified. These coordinates be matched with images after OP3 to check whether there is sapling survival at those points
+
+
+Judging the Winner: 
+1. In Patch 1 and Patch 2, we know the exact locations (25-30 in each) where the saplings have died on the ground. So, the accuracy of the participant's algorithm is a critical factor-whether it is able to detect those 30 locations where the sapling has died. 
+2. The speed of processing is another factor where we would like the participant
+to be judged as thousands of such patches are created across the state annually. 
+Event Structure: (Team Size: 1-4 participants) 
+There will be one rounds in the competition 
+
+
+submission will be submitted to gemini@ktj.in email id.
+Event Format: The 24-Hour Build
+
+
+Overview
+Participants will engage in a high-intensity 24-hour continuous coding marathon.  The goal is to build a functional prototype that validates the Data. Teams will be judged strictly on their code quality, system performance, and the comprehensive documentation submitted at the deadline.
+ 
+Dataset will be provided at the start of the event
+General Rules: 
+2. In case of any disputes, final wording will remain with the organizers. The decision of the judges is final. 
+3. No questions over the evaluations of the participants by the judges will be entertained. 
+4. Every team has to register online on the official Kshitij website for the competition. 
+5. A-Team ID will be allocated to the participant on registration which shall be used for future references. 
+6. Bring your laptop with you 
+7. No responsibility will be held by Kshitij, IIT Kharagpur for any late, lost or misdirected entries.
+8. Note that at any point of time the latest information will be that which is on the website or announced at the test room. However, registered participants will be informed through mail about any changes. 
+   9. No Participant is allowed to register in more than one team.

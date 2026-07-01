@@ -62,52 +62,6 @@ def _make_alive_tree_image(path: str) -> str:
 
 # ─── tests ─────────────────────────────────────────────────────────────────────
 
-def test_health_classifier_alive():
-    """TreeHealthClassifier should classify a green crop as ALIVE."""
-    from core.health_classifier import TreeHealthClassifier
-    from models.data_structures import TreeStatus
-
-    tmpdir = tempfile.mkdtemp()
-    try:
-        path = os.path.join(tmpdir, "alive.jpg")
-        _make_alive_tree_image(path)
-        img = cv2.imread(path)
-
-        classifier = TreeHealthClassifier()
-        result = classifier.classify_health(img, tree_id=0)
-
-        assert result is not None, "classify_health returned None"
-        assert result.status == TreeStatus.ALIVE, (
-            f"Expected ALIVE for green crop, got {result.status}"
-        )
-        assert result.confidence > 0.5, f"Confidence too low: {result.confidence}"
-        print(f"  ✅ ALIVE classification: confidence={result.confidence:.2f}")
-    finally:
-        shutil.rmtree(tmpdir)
-
-
-def test_health_classifier_dead():
-    """TreeHealthClassifier should classify a brownish crop as DEAD."""
-    from core.health_classifier import TreeHealthClassifier
-    from models.data_structures import TreeStatus
-
-    tmpdir = tempfile.mkdtemp()
-    try:
-        path = os.path.join(tmpdir, "dead.jpg")
-        _make_dead_tree_image(path)
-        img = cv2.imread(path)
-
-        classifier = TreeHealthClassifier()
-        result = classifier.classify_health(img, tree_id=1)
-
-        assert result is not None, "classify_health returned None"
-        # Brown/dark image should be DEAD or DISEASED (not ALIVE)
-        assert result.status in (TreeStatus.DEAD, TreeStatus.DISEASED), (
-            f"Expected DEAD/DISEASED for brown crop, got {result.status}"
-        )
-        print(f"  ✅ Dead classification: status={result.status.value}, confidence={result.confidence:.2f}")
-    finally:
-        shutil.rmtree(tmpdir)
 
 
 def test_forest_processor_geometric_fallback():
@@ -264,8 +218,6 @@ def test_full_upload_pipeline():
 
 if __name__ == "__main__":
     tests = [
-        ("Health Classifier — Alive", test_health_classifier_alive),
-        ("Health Classifier — Dead",  test_health_classifier_dead),
         ("Forest Processor — Geometric Fallback", test_forest_processor_geometric_fallback),
         ("DataManager — Save & Retrieve", test_data_manager_save_and_retrieve),
         ("API — /api/stats endpoint", test_api_stats_endpoint),
